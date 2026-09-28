@@ -594,6 +594,20 @@
   const timeDisplay = document.getElementById('timeDisplay');
   const ctx = canvas.getContext('2d');
 
+  // Hidden test hook: ?testmic=1 substitutes a fake mic stream so the full
+  // recording flow can be exercised in automation without mic permission.
+  if (new URLSearchParams(location.search).get('testmic') === '1') {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      const ac = new AC();
+      const osc = ac.createOscillator();
+      const dest = ac.createMediaStreamDestination();
+      osc.connect(dest); osc.start();
+      const fakeStream = dest.stream;
+      navigator.mediaDevices.getUserMedia = async () => fakeStream;
+    } catch (e) { console.log('testmic hook failed', e); }
+  }
+
   let isDemoMode = true;
   let isRecording = false, mediaRecorder, audioChunks = [], audioBlobUrl = null;
   let mediaStreamRef = null;
