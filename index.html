@@ -450,6 +450,8 @@
       lblFreezePoint: "⏸️ 定格分析点：",
       lblTimeFine: "时间：",
       btnPlayPause: "⏯️ 播放 / 暂停",
+      btnPlay: "▶️ 播放",
+      btnPause: "⏸️ 暂停",
       btnCapture: "📌 抓取定格分析",
       btnRecordStart: "🎙️ 录制语音点评",
       btnRecordStop: "🛑 停止录音",
@@ -472,6 +474,7 @@
       lblStatus: "状态:",
       statusDemo: "真人示范预置中",
       statusPlaying: "视频流畅播放中",
+      statusPlayFailed: "⚠️ 播放没启动，再点一次播放键",
       statusAnalyzing: "锁定解析中",
       statusSaved: "定格分析节点已保存",
       statusStudentView: "学员视图模式",
@@ -523,6 +526,8 @@
       lblFreezePoint: "⏸️ Freeze Point: ",
       lblTimeFine: "Seek: ",
       btnPlayPause: "⏯️ Play / Pause",
+      btnPlay: "▶️ Play",
+      btnPause: "⏸️ Pause",
       btnCapture: "📌 Freeze Frame and Analyze",
       btnRecordStart: "🎙️ Record Audio",
       btnRecordStop: "🛑 Stop Record",
@@ -545,6 +550,7 @@
       lblStatus: "Status:",
       statusDemo: "Demo Model Active",
       statusPlaying: "Video Playing Smoothly",
+      statusPlayFailed: "⚠️ Playback didn't start — tap Play again",
       statusAnalyzing: "Analyzing Frame",
       statusSaved: "Freeze point saved",
       statusStudentView: "Student Mode",
@@ -593,20 +599,6 @@
   const seeker = document.getElementById('videoSeeker');
   const timeDisplay = document.getElementById('timeDisplay');
   const ctx = canvas.getContext('2d');
-
-  // Hidden test hook: ?testmic=1 substitutes a fake mic stream so the full
-  // recording flow can be exercised in automation without mic permission.
-  if (new URLSearchParams(location.search).get('testmic') === '1') {
-    try {
-      const AC = window.AudioContext || window.webkitAudioContext;
-      const ac = new AC();
-      const osc = ac.createOscillator();
-      const dest = ac.createMediaStreamDestination();
-      osc.connect(dest); osc.start();
-      const fakeStream = dest.stream;
-      navigator.mediaDevices.getUserMedia = async () => fakeStream;
-    } catch (e) { console.log('testmic hook failed', e); }
-  }
 
   let isDemoMode = true;
   let isRecording = false, mediaRecorder, audioChunks = [], audioBlobUrl = null;
@@ -1033,7 +1025,23 @@
       document.getElementById('freezeBanner').style.display = 'none';
       ctx.clearRect(0, 0, stage.clientWidth, stage.clientHeight);
     }
+    syncPlayButton();
   });
+
+  video.addEventListener('pause', () => {
+    syncPlayButton();
+  });
+
+  // Keep the Play/Pause button label in sync with the video element's REAL
+  // state, so a failed play() on mobile is visible instead of looking "stuck".
+  function syncPlayButton() {
+    const btn = document.getElementById('btnPlayPause');
+    if (!btn) return;
+    const t = i18n[currentLang] || {};
+    if (isDemoMode) { btn.innerText = t.btnPlayPause || '⏯️ Play / Pause'; return; }
+    const playing = !video.paused && !video.ended;
+    btn.innerText = playing ? (t.btnPause || '⏸️ Pause') : (t.btnPlay || '▶️ Play');
+  }
 
   function drawPoseFrame(results, clearBg = true) {
     const stageW = stage.clientWidth, stageH = stage.clientHeight;
@@ -1130,18 +1138,40 @@
     }
   }
 
-  function togglePlay() {
+  // Try to start video playback and VERIFY it actually started.
+  // On iOS Safari video.play() can silently fail (esp. while the mic is
+  // recording), leaving the video looking "stuck" on the freeze frame.
+  async function tryStartPlayback() {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        await video.play();
+      } catch (e) {
+        console.log('Play failed (attempt ' + (attempt + 1) + '):', e);
+      }
+      // Give the media element a moment, then check the real state.
+      await new Promise(r => setTimeout(r, 350));
+      if (!video.paused && !video.ended) return true;
+    }
+    return !video.paused && !video.ended;
+  }
+
+  async function togglePlay() {
     if (isDemoMode) {
       alert(i18n[currentLang].alertDemoPlay);
       return;
     }
-    if (video.paused) {
+    if (video.paused || video.ended) {
       document.getElementById('freezeBanner').style.display = 'none';
       ctx.clearRect(0, 0, stage.clientWidth, stage.clientHeight);
-      video.play().catch(e => console.log('Play failed:', e));
       logRecEvent({ type: 'play', videoTime: r2(video.currentTime) });
       updateStatus('statusPlaying');
       requestAnimationFrame(processVideoFrame);
+      const started = await tryStartPlayback();
+      syncPlayButton();
+      if (!started) {
+        // Visible to the user (console is invisible on phones): tap again.
+        updateStatus('statusPlayFailed');
+      }
     } else {
       video.pause();
       logRecEvent({ type: 'pause', videoTime: r2(video.currentTime) });
@@ -1352,7 +1382,7 @@
 
     document.getElementById('lblFreezePoint').innerText = t.lblFreezePoint;
     document.getElementById('lblTimeFine').innerText = t.lblTimeFine;
-    document.getElementById('btnPlayPause').innerText = t.btnPlayPause;
+    syncPlayButton();
     document.getElementById('btnCapture').innerText = t.btnCapture;
 
     const recordBtn = document.getElementById('coachRecordBtn');
@@ -1440,6 +1470,7 @@
           duration: 0
         };
         recStartPerf = performance.now();
+        isRecording = true; // set before logging so the initial seek/play events are captured
         poseCache = new Map();
         video.loop = false;
         video.muted = true;
@@ -1451,12 +1482,13 @@
         mediaRecorder.ondataavailable = e => { if (e.data && e.data.size) audioChunks.push(e.data); };
         mediaRecorder.onstop = () => saveRecSession();
         mediaRecorder.start();
-        isRecording = true;
         btn.innerText = t.btnRecordStop;
         showDirectOverlay('rec');
         recTickTimer = setInterval(updateRecOverlay, 500);
         updateStatus('statusRecording');
       } catch (err) {
+        isRecording = false;
+        recSession = null;
         alert(t.alertMic);
       }
     } else {
@@ -1498,6 +1530,7 @@
     } finally {
       recSession = null;
       video.muted = false;
+      video.loop = true; // restore looping that was disabled during recording
     }
   }
 
