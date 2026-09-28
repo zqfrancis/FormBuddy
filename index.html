@@ -1,0 +1,1365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>FormBuddy - Motion Analysis System</title>
+
+<!-- 引入 Google MediaPipe Pose 及绘图库 -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+
+<!-- 引入 SunCalc 计算精准日落时间 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.9.0/suncalc.min.js"></script>
+
+<style>
+  :root {
+    --bg-main: #000000;
+    --text-main: #ffffff;
+    --bg-header: #111111;
+    --border-header: #333333;
+    --bg-input: #181818;
+    --border-input: #444444;
+    --hover-bg: #ffffff;
+    --hover-text: #000000;
+    --bg-player: #050505;
+    --bg-video-wrapper: #0d0f14;
+    --border-video-wrapper: #333333;
+    --bg-box: #111111;
+    --border-box: #282828;
+    --text-muted: #888888;
+    --bg-chip: #1a1a1a;
+    --border-sidebar: #222222;
+    --bg-panel: #181818;
+    --bg-card: #222222;
+  }
+
+  body.light-theme {
+    --bg-main: #f5f5f7;
+    --text-main: #1d1d1f;
+    --bg-header: #ffffff;
+    --border-header: #e5e5e5;
+    --bg-input: #ffffff;
+    --border-input: #d2d2d7;
+    --hover-bg: #000000;
+    --hover-text: #ffffff;
+    --bg-player: #f2f2f7;
+    --bg-video-wrapper: #e5e5ea;
+    --border-video-wrapper: #d1d1d6;
+    --bg-box: #ffffff;
+    --border-box: #e5e5e5;
+    --text-muted: #6e6e73;
+    --bg-chip: #f2f2f7;
+    --border-sidebar: #e5e5e5;
+    --bg-panel: #ffffff;
+    --bg-card: #f9f9fb;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  
+  html, body {
+    margin: 0; padding: 0; 
+    background: var(--bg-main) !important; 
+    color: var(--text-main) !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    width: 100%;
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  body { 
+    display: flex; 
+    flex-direction: column;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  header {
+    background: var(--bg-header) !important; 
+    padding: 12px 16px;
+    display: flex; 
+    align-items: center; 
+    justify-content: space-between;
+    border-bottom: 2px solid var(--border-header) !important; 
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    gap: 10px;
+    transition: background-color 0.3s ease, border-color 0.3s ease;
+  }
+  header h1 { font-weight: 700; font-size: 1.1rem; color: var(--text-main) !important; margin: 0; }
+  .header-controls { display: flex; align-items: center; gap: 12px; font-weight: 600; color: var(--text-main) !important; font-size: 0.85rem; flex-wrap: wrap; }
+  .ctrl-item { display: flex; align-items: center; gap: 6px; }
+
+  select, button, input {
+    background: var(--bg-input) !important; border: 1px solid var(--border-input) !important; color: var(--text-main) !important;
+    padding: 8px 12px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.88rem;
+    touch-action: manipulation;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  }
+  button:hover, button:active { background: var(--hover-bg) !important; color: var(--hover-text) !important; border-color: var(--hover-bg) !important; }
+
+  #app { 
+    flex: 1; 
+    display: flex; 
+    flex-direction: row; 
+    background: var(--bg-main) !important; 
+    width: 100%;
+  }
+  
+  #player-container {
+    flex: 1; 
+    display: flex; 
+    flex-direction: column; 
+    align-items: center; 
+    justify-content: flex-start;
+    position: relative; 
+    padding: 16px; 
+    background: var(--bg-player) !important; 
+    width: 100%;
+    transition: background-color 0.3s ease;
+  }
+
+  .video-wrapper {
+    position: relative; 
+    width: 100%; 
+    max-width: 1000px; 
+    height: 55vh; 
+    min-height: 280px;
+    border: 2px solid var(--border-video-wrapper) !important; 
+    border-radius: 8px; 
+    overflow: hidden;
+    display: flex; 
+    justify-content: center; 
+    align-items: center; 
+    background: var(--bg-video-wrapper) !important;
+    touch-action: pan-y;
+    transition: background-color 0.3s ease, border-color 0.3s ease;
+  }
+  video { 
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%; 
+    object-fit: contain; 
+    z-index: 1;
+  }
+  canvas { 
+    position: absolute; 
+    top: 0; left: 0; 
+    width: 100%; height: 100%; 
+    z-index: 2;
+    pointer-events: auto; 
+    cursor: move; 
+  }
+
+  #freezeBanner {
+    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+    background: rgba(255, 0, 85, 0.9); color: #fff; padding: 6px 16px;
+    border-radius: 20px; font-weight: bold; font-size: 0.85rem; z-index: 10;
+    display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.5); border: 1px solid #ffffff;
+    white-space: nowrap;
+  }
+  
+  #controls {
+    margin-top: 12px; width: 100%; max-width: 1000px;
+    display: flex; flex-direction: column; gap: 10px; align-items: center;
+  }
+  .control-row { display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; width: 100%; }
+  
+  .seeker-box {
+    width: 100%; display: flex; align-items: center; gap: 10px;
+    background: var(--bg-box); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-box);
+    transition: background-color 0.3s ease, border-color 0.3s ease;
+  }
+  .seeker-box input[type="range"] { flex: 1; height: 24px; cursor: pointer; accent-color: #00ff87; }
+
+  #timeline-points {
+    width: 100%; max-width: 1000px; margin-top: 12px;
+    background: var(--bg-box); border: 1px solid var(--border-box); border-radius: 8px; padding: 12px;
+    transition: background-color 0.3s ease, border-color 0.3s ease;
+  }
+  #timeline-points h4 { margin: 0 0 10px 0; font-size: 0.85rem; color: var(--text-muted); display: flex; justify-content: space-between; }
+  .points-container { display: flex; gap: 10px; flex-wrap: wrap; }
+  .point-chip {
+    background: var(--bg-chip); border: 1px solid #00ff87; border-radius: 6px; padding: 8px 12px;
+    display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--text-main); cursor: pointer;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+  .point-chip:active { opacity: 0.8; }
+  .point-chip .time-lbl { font-family: monospace; font-weight: bold; color: #00b359; }
+  body:not(.light-theme) .point-chip .time-lbl { color: #00ff87; }
+  .point-chip .del-btn {
+    background: transparent !important; border: none !important; color: #ff4757 !important;
+    padding: 0 4px !important; font-size: 1rem; line-height: 1; cursor: pointer;
+  }
+
+  #sidebar {
+    width: 320px; flex-shrink: 0; background: var(--bg-header) !important; border-left: 1px solid var(--border-sidebar) !important;
+    padding: 16px; display: flex; flex-direction: column; gap: 14px; color: var(--text-main) !important;
+    transition: background-color 0.3s ease, border-color 0.3s ease;
+  }
+  .panel-section { background: var(--bg-panel) !important; padding: 12px; border-radius: 8px; border: 1px solid var(--border-box) !important; transition: background-color 0.3s ease, border-color 0.3s ease; }
+  .panel-section h3 { margin: 0 0 10px 0; color: var(--text-main) !important; font-size: 0.92rem; }
+  .status-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; background: var(--bg-chip) !important; color: var(--text-main) !important; border: 1px solid var(--border-input) !important; }
+
+  .snapshot-card {
+    background: var(--bg-card); border: 1px solid var(--border-input); border-radius: 6px; padding: 10px; margin-top: 8px;
+    font-size: 0.83rem; line-height: 1.5; position: relative; transition: background-color 0.3s ease, border-color 0.3s ease;
+  }
+  .snapshot-card div { margin-bottom: 4px; }
+  .snapshot-card .card-del {
+    position: absolute; top: 8px; right: 8px; background: transparent !important;
+    border: none !important; color: #ff4757 !important; padding: 0 !important; font-size: 0.9rem;
+  }
+
+  .video-list-box {
+    margin-top: 10px;
+    padding: 8px;
+    background: var(--bg-box);
+    border: 1px solid var(--border-box);
+    border-radius: 6px;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    min-height: 48px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: stretch;
+    justify-content: center;
+    transition: background-color 0.3s ease, border-color 0.3s ease;
+  }
+
+  .pending-item {
+    background: var(--bg-chip);
+    border: 1px solid var(--border-box);
+    padding: 8px 10px;
+    border-radius: 4px;
+    color: #00b359;
+    font-weight: 600;
+    font-size: 0.82rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background-color 0.3s ease, border-color 0.3s ease;
+  }
+  body:not(.light-theme) .pending-item { color: #00ff87; }
+
+  @media (max-width: 768px) {
+    header {
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+    }
+    .header-controls {
+      width: 100%;
+      justify-content: center;
+    }
+    #app { flex-direction: column; }
+    #player-container { padding: 10px; }
+    #sidebar { 
+      width: 100%; 
+      border-left: none; 
+      border-top: 2px solid var(--border-sidebar); 
+      padding-bottom: 30px;
+    }
+    .video-wrapper { height: 42vh; min-height: 250px; }
+    .control-row button { flex: 1; min-width: 130px; padding: 10px 8px; font-size: 0.82rem; }
+    header h1 { font-size: 1rem; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🥋 FormBuddy <span style="font-size:0.75rem; color:var(--text-muted);" id="headerSubTitle">(Motion Analysis)</span></h1>
+  
+  <div class="header-controls">
+    <div class="ctrl-item">
+      <span>🌐</span>
+      <select id="langSelect" onchange="switchLanguage(this.value)">
+        <option value="en" selected>English</option>
+        <option value="zh">简体中文</option>
+      </select>
+    </div>
+
+    <div class="ctrl-item">
+      <span>🌓</span>
+      <select id="themeSelect" onchange="switchThemeMode(this.value)">
+        <option value="auto" id="optThemeAuto">Auto</option>
+        <option value="light" id="optThemeLight">Light</option>
+        <option value="dark" id="optThemeDark">Dark</option>
+      </select>
+    </div>
+
+    <div class="ctrl-item">
+      <span id="lblViewRole">View:</span>
+      <select id="roleSelect" onchange="switchRole(this.value)">
+        <option value="Student" id="optStudent">👨‍🎓 Student</option>
+        <option value="Coach" id="optCoach">👨‍🏫 Coach</option>
+      </select>
+    </div>
+  </div>
+</header>
+
+<div id="app">
+  <div id="player-container">
+    <div id="freezeBanner"><span id="lblFreezePoint">⏸️ Freeze Point: </span><span id="freezeTime">00:01.4</span></div>
+
+    <div class="video-wrapper" id="stage">
+      <video id="videoPlayer" crossorigin="anonymous" loop playsinline webkit-playsinline style="display:none;"></video>
+      <canvas id="overlayCanvas"></canvas>
+    </div>
+
+    <div id="controls">
+      <div class="seeker-box">
+        <span style="font-size:0.8rem; color:var(--text-muted);" id="lblTimeFine">Seek: </span>
+        <input type="range" id="videoSeeker" min="0" value="0" step="0.01" oninput="onSeekInput(this.value)" onchange="onSeekChange(this.value)" />
+        <span id="timeDisplay" style="font-size:0.85rem; font-family:monospace; color:var(--text-main);">00:00.0</span>
+      </div>
+
+      <div class="control-row">
+        <button id="btnPlayPause" onclick="togglePlay()">⏯️ Play / Pause</button>
+        <button id="btnCapture" style="display:none; background:#00ff87 !important; color:#000 !important; border:none !important;" onclick="freezeAndAnalyze()">📌 Freeze Frame and Analyze</button>
+        <button id="coachRecordBtn" style="display:none; background:#ff4757 !important; color:#fff !important; border:none !important;" onclick="toggleRecording()">🎙️ Record Audio</button>
+        <button id="playFeedbackBtn" style="display:none;" onclick="playFeedback()">▶️ Play Audio</button>
+      </div>
+    </div>
+
+    <div id="timeline-points" style="display:none;">
+      <h4>
+        <span id="lblTimelineHeader">📍 Captured Points</span>
+        <span id="pointCount" style="color:var(--text-muted);">0 points</span>
+      </h4>
+      <div class="points-container" id="pointsContainer"></div>
+    </div>
+  </div>
+
+  <div id="sidebar">
+    <div id="studentPanel">
+      <div class="panel-section">
+        <h3 id="titleUpload">📤 Upload Video</h3>
+        <input type="file" id="videoInput" accept="video/*" onchange="loadUserVideo(event)" style="width:100%; margin-bottom:10px;" />
+        <button id="btnSubmitCoach" style="width:100%; margin-top:8px;" onclick="submitToCoach()">🚀 Submit to Coach</button>
+      </div>
+
+      <div class="panel-section" style="margin-top: 14px;">
+        <h3 id="titlePendingList">⏳ Pending Review</h3>
+        <div id="pendingList" class="video-list-box">No pending submissions.</div>
+      </div>
+
+      <div class="panel-section" style="margin-top: 14px;">
+        <h3 id="titleReviewedList">✅ Reviewed Feedback</h3>
+        <div id="reviewedList" class="video-list-box">No reviewed videos yet.</div>
+      </div>
+    </div>
+
+    <div id="coachPanel" class="panel-section" style="display:none;">
+      <h3 id="titleSubmissions">📋 Student Submissions</h3>
+      <select id="submissionSelect" style="width:100%">
+        <option value="" id="optSubmissionItem">-- None (Waiting for Student Submission) --</option>
+      </select>
+    </div>
+
+    <div id="secLayerSettings" class="panel-section" style="display:none;">
+      <h3 id="titleLayerSettings">⚙️ AI Layer Settings</h3>
+      <label style="display:block; margin-bottom:10px;"><input type="checkbox" id="showSkeleton" checked onchange="redrawCurrentFrame()" /> <span id="lblShowSkeleton">Skeleton Line (No Head)</span></label>
+      <label style="display:block; margin-bottom:10px;"><input type="checkbox" id="showAngles" checked onchange="redrawCurrentFrame()" /> <span id="lblShowAngles">Joint Angle Measurements</span></label>
+      <label style="display:block;"><input type="checkbox" id="showCOM" checked onchange="redrawCurrentFrame()" /> <span id="lblShowCOM">Center of Mass (COM)</span></label>
+    </div>
+
+    <div id="secAngleRecords" class="panel-section" style="display:none;">
+      <h3 id="titleAngleRecords">📐 Angle Records</h3>
+      <div id="angleRecords" style="color:var(--text-muted); font-size:0.85rem;"></div>
+    </div>
+
+    <div id="secSystemStatus" class="panel-section" style="display:none;">
+      <h3 id="titleSystemStatus">📊 System Status</h3>
+      <div><span id="lblStatus">Status:</span> <span class="status-badge" id="statusBadge">Demo Model Active</span></div>
+      <div id="audioStatus" style="margin-top:8px; font-size:0.85rem; color:var(--text-muted);">No voice feedback yet.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let currentLang = 'en';
+  let currentRole = 'Student';
+  let currentStatusKey = 'statusDemo';
+  let lastPoseResults = null;
+  let isProcessingFrame = false; 
+
+  let currentThemeMode = 'auto'; // 'auto', 'light', 'dark'
+  let autoCheckTimer = null;
+
+  let submittedVideos = []; // 存储提交给教练的视频记录
+  let currentVideoFileName = "Kick Practice Video"; // 当前视频名称
+
+  const i18n = {
+    zh: {
+      headerSubTitle: "(动作分析系统)",
+      lblViewRole: "视图:",
+      optStudent: "👨‍🎓 学员",
+      optCoach: "👨‍🏫 教练",
+      optThemeAuto: "🌓 自动",
+      optThemeLight: "☀️ 浅色 (日间)",
+      optThemeDark: "🌙 深色 (夜间)",
+      lblFreezePoint: "⏸️ 定格分析点：",
+      lblTimeFine: "时间：",
+      btnPlayPause: "⏯️ 播放 / 暂停",
+      btnCapture: "📌 抓取定格分析",
+      btnRecordStart: "🎙️ 录制语音点评",
+      btnRecordStop: "🛑 停止录音",
+      btnPlayAudio: "▶️ 播放点评",
+      lblTimelineHeader: "📍 已捕获定格节点",
+      titleUpload: "📤 上传本地训练视频",
+      btnSubmitCoach: "🚀 提交给教练",
+      titlePendingList: "⏳ 等待教练审核",
+      emptyPending: "暂无等待审核的视频",
+      titleReviewedList: "✅ 教练已完成审核",
+      emptyReviewed: "暂无教练点评发回的视频",
+      titleSubmissions: "📋 学员提交列表",
+      optSubmissionItem: "-- 暂无提交（等待学员上传） --",
+      titleLayerSettings: "⚙️ AI 图层设置",
+      lblShowSkeleton: "肢体骨骼力线 (无头部)",
+      lblShowAngles: "关节测量角度",
+      lblShowCOM: "重心与重力线 (COM)",
+      titleAngleRecords: "📐 已保存帧角度记录",
+      titleSystemStatus: "📊 AI 系统状态",
+      lblStatus: "状态:",
+      statusDemo: "真人示范预置中",
+      statusPlaying: "视频流畅播放中",
+      statusAnalyzing: "锁定解析中",
+      statusSaved: "定格分析节点已保存",
+      statusStudentView: "学员视图模式",
+      statusCoachView: "教练视图模式",
+      noAudio: "暂无语音点评。",
+      audioSaved: "✅ 已录制语音指导点评",
+      tagKick: "高踢延伸",
+      tagSupport: "支撑腿",
+      tagGuard: "防守手肘",
+      cardKick: "🦵 踢击腿角度：",
+      cardSupport: "🦵 支撑腿膝关节：",
+      cardGuard: "💪 防守手肘关节：",
+      timePoint: "⏱️ 定格时间点：",
+      emptyPoints: "暂无节点，点击“抓取定格分析”即可标记。",
+      emptyRecords: "点击“抓取定格分析”保存关节角度数据。",
+      unitPoints: "个节点",
+      unitPoint: "个节点",
+      chipPoint: "📍 节点",
+      alertDemoPlay: "请在左侧上传本地视频体验动态播放！",
+      alertDemoCapture: "请上传本地视频体验抓取功能！",
+      alertMic: "需要麦克风权限！",
+      alertSubmitted: "已提交给教练！"
+    },
+    en: {
+      headerSubTitle: "(Motion Analysis)",
+      lblViewRole: "View:",
+      optStudent: "👨‍🎓 Student",
+      optCoach: "👨‍🏫 Coach",
+      optThemeAuto: "🌓 Auto",
+      optThemeLight: "☀️ Light",
+      optThemeDark: "🌙 Dark",
+      lblFreezePoint: "⏸️ Freeze Point: ",
+      lblTimeFine: "Seek: ",
+      btnPlayPause: "⏯️ Play / Pause",
+      btnCapture: "📌 Freeze Frame and Analyze",
+      btnRecordStart: "🎙️ Record Audio",
+      btnRecordStop: "🛑 Stop Record",
+      btnPlayAudio: "▶️ Play Audio",
+      lblTimelineHeader: "📍 Captured Points",
+      titleUpload: "📤 Upload Video",
+      btnSubmitCoach: "🚀 Submit to Coach",
+      titlePendingList: "⏳ Pending Review",
+      emptyPending: "No pending submissions.",
+      titleReviewedList: "✅ Reviewed Feedback",
+      emptyReviewed: "No reviewed videos yet.",
+      titleSubmissions: "📋 Student Submissions",
+      optSubmissionItem: "-- None (Waiting for Student Submission) --",
+      titleLayerSettings: "⚙️ AI Layer Settings",
+      lblShowSkeleton: "Skeleton Line (No Head)",
+      lblShowAngles: "Joint Angle Measurements",
+      lblShowCOM: "Center of Mass (COM)",
+      titleAngleRecords: "📐 Angle Records",
+      titleSystemStatus: "📊 System Status",
+      lblStatus: "Status:",
+      statusDemo: "Demo Model Active",
+      statusPlaying: "Video Playing Smoothly",
+      statusAnalyzing: "Analyzing Frame",
+      statusSaved: "Freeze point saved",
+      statusStudentView: "Student Mode",
+      statusCoachView: "Coach Mode",
+      noAudio: "No voice feedback yet.",
+      audioSaved: "✅ Audio recorded",
+      tagKick: "High Kick Extension",
+      tagSupport: "Support Leg",
+      tagGuard: "Guard Elbow",
+      cardKick: "🦵 Kicking Leg Angle: ",
+      cardSupport: "🦵 Support Knee Angle: ",
+      cardGuard: "💪 Guard Elbow Angle: ",
+      timePoint: "⏱️ Freeze Time: ",
+      emptyPoints: "No freeze points captured.",
+      emptyRecords: "Click 'Freeze Frame and Analyze' to record joint angles.",
+      unitPoints: "points",
+      unitPoint: "point",
+      chipPoint: "📍 Point",
+      alertDemoPlay: "Upload local video to play!",
+      alertDemoCapture: "Upload video to test capture!",
+      alertMic: "Microphone permission required!",
+      alertSubmitted: "Submitted to coach!"
+    }
+  };
+
+  const video = document.getElementById('videoPlayer');
+  const canvas = document.getElementById('overlayCanvas');
+  const stage = document.getElementById('stage');
+  const seeker = document.getElementById('videoSeeker');
+  const timeDisplay = document.getElementById('timeDisplay');
+  const ctx = canvas.getContext('2d');
+
+  let isDemoMode = true;
+  let isRecording = false, mediaRecorder, audioChunks = [], audioBlobUrl = null;
+  let lastAngles = { rightKnee: 168, leftKnee: 172, guardElbow: 78 };
+  let isSeeking = false;
+
+  let tagOffsets = {
+    kick: { x: 0, y: 0 },
+    support: { x: 0, y: 0 },
+    guard: { x: 0, y: 0 }
+  };
+  let tagHitBoxes = []; 
+  let draggingTag = null;
+  let dragStartPos = { x: 0, y: 0 };
+  let activeOffsetStart = { x: 0, y: 0 };
+  let currentBodyBBox = null;
+
+  const demoBgImg = new Image();
+  demoBgImg.crossOrigin = "anonymous";
+  
+  const fallbackSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" viewBox="0 0 800 500"><rect width="100%" height="100%" fill="#1a1d24"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#666666" font-size="18">High Kick Demo (Loading...)</text></svg>`;
+  
+  demoBgImg.onerror = () => {
+    demoBgImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(fallbackSvg);
+  };
+  demoBgImg.src = 'https://i.ibb.co/YT2fYMHj/kick.jpg';
+
+  let freezePoints = [
+    { id: 101, time: 1.4, timeStr: "00:01.4", angles: { rightKnee: 168, leftKnee: 172, guardElbow: 78 } }
+  ]; 
+
+  const pose = new Pose({
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`
+  });
+
+  pose.setOptions({
+    modelComplexity: 0,
+    smoothLandmarks: true,
+    enableSegmentation: false,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5
+  });
+
+  pose.onResults(onPoseResults);
+
+  // --- 主题/自动日夜模式逻辑 ---
+  function initTheme() {
+    applyThemeMode(currentThemeMode);
+    if (!autoCheckTimer) {
+      autoCheckTimer = setInterval(() => {
+        if (currentThemeMode === 'auto') {
+          checkAndUpdateAutoTheme();
+        }
+      }, 60000); // 每分钟校验一次
+    }
+  }
+
+  function switchThemeMode(mode) {
+    currentThemeMode = mode;
+    applyThemeMode(mode);
+  }
+
+  function applyThemeMode(mode) {
+    if (mode === 'light') {
+      document.body.classList.add('light-theme');
+    } else if (mode === 'dark') {
+      document.body.classList.remove('light-theme');
+    } else {
+      checkAndUpdateAutoTheme();
+    }
+  }
+
+  function checkAndUpdateAutoTheme() {
+    const now = new Date();
+    
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          const times = SunCalc.getTimes(now, lat, lng);
+          const sunset = times.sunset;
+          const sunrise = times.sunrise;
+
+          if (now >= sunrise && now < sunset) {
+            document.body.classList.add('light-theme');
+          } else {
+            document.body.classList.remove('light-theme');
+          }
+        },
+        () => {
+          fallbackAutoTheme(now);
+        },
+        { timeout: 3000 }
+      );
+    } else {
+      fallbackAutoTheme(now);
+    }
+  }
+
+  function fallbackAutoTheme(now) {
+    const hours = now.getHours();
+    if (hours >= 6 && hours < 18) {
+      document.body.classList.add('light-theme');
+    } else {
+      document.body.classList.remove('light-theme');
+    }
+  }
+
+  function getMediaDisplayBox(mediaWidth, mediaHeight, containerWidth, containerHeight) {
+    const mediaRatio = mediaWidth / mediaHeight;
+    const containerRatio = containerWidth / containerHeight;
+    let rw, rh, rx = 0, ry = 0;
+
+    if (containerRatio > mediaRatio) {
+      rh = containerHeight;
+      rw = containerHeight * mediaRatio;
+      rx = (containerWidth - rw) / 2;
+    } else {
+      rw = containerWidth;
+      rh = containerWidth / mediaRatio;
+      ry = (containerHeight - rh) / 2;
+    }
+    return { rw, rh, rx, ry };
+  }
+
+  function syncCanvasSize() {
+    const dpr = window.devicePixelRatio || 1;
+    const rect = stage.getBoundingClientRect();
+    
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    
+    canvas.style.width = rect.width + 'px';
+    canvas.style.height = rect.height + 'px';
+
+    ctx.scale(dpr, dpr);
+    redrawCurrentFrame();
+  }
+
+  const resizeObserver = new ResizeObserver(() => syncCanvasSize());
+  resizeObserver.observe(stage);
+
+  demoBgImg.onload = () => { if (isDemoMode) renderDemo(); };
+
+  window.addEventListener('load', () => {
+    syncCanvasSize();
+    initTheme();
+    switchLanguage('en');
+    switchRole('Student');
+    renderTimelinePoints();
+    renderSidebarCards();
+    initDragEvents();
+    renderPendingList();
+  });
+
+  function redrawCurrentFrame() {
+    if (isDemoMode) {
+      renderDemo();
+    } else if (video.paused && lastPoseResults && currentRole === 'Coach') {
+      drawPoseFrame(lastPoseResults);
+    } else if (!video.paused || currentRole !== 'Coach') {
+      ctx.clearRect(0, 0, stage.clientWidth, stage.clientHeight);
+    }
+  }
+
+  const demoKeypoints = {
+    lShoulder: { x: 0.69, y: 0.35 }, rShoulder: { x: 0.76, y: 0.36 },
+    lHip:      { x: 0.53, y: 0.50 }, rHip:      { x: 0.60, y: 0.51 },
+    lElbow:    { x: 0.67, y: 0.38 }, lHand:     { x: 0.72, y: 0.33 },
+    rElbow:    { x: 0.82, y: 0.42 }, rHand:     { x: 0.81, y: 0.28 },
+    lKnee:     { x: 0.56, y: 0.66 }, lAnkle:    { x: 0.61, y: 0.83 },
+    rKnee:     { x: 0.38, y: 0.38 }, rAnkle:    { x: 0.13, y: 0.26 }
+  };
+
+  function renderDemo() {
+    const stageW = stage.clientWidth, stageH = stage.clientHeight;
+    ctx.clearRect(0, 0, stageW, stageH);
+    tagHitBoxes = [];
+
+    if (!demoBgImg.complete || demoBgImg.naturalWidth === 0) return;
+
+    const box = getMediaDisplayBox(demoBgImg.naturalWidth, demoBgImg.naturalHeight, stageW, stageH);
+    ctx.drawImage(demoBgImg, box.rx, box.ry, box.rw, box.rh);
+
+    const getPt = (kp) => ({ x: box.rx + kp.x * box.rw, y: box.ry + kp.y * box.rh });
+    const pts = {};
+    for (let k in demoKeypoints) pts[k] = getPt(demoKeypoints[k]);
+
+    const allPts = Object.values(pts);
+    const minX = Math.min(...allPts.map(p => p.x));
+    const maxX = Math.max(...allPts.map(p => p.x));
+    const minY = Math.min(...allPts.map(p => p.y));
+    const maxY = Math.max(...allPts.map(p => p.y));
+    currentBodyBBox = { minX, maxX, minY, maxY };
+
+    const showSkel = document.getElementById('showSkeleton').checked;
+    const showAng = document.getElementById('showAngles').checked;
+    const showCOM = document.getElementById('showCOM').checked;
+    const t = i18n[currentLang];
+
+    if (showSkel) {
+      drawBone(pts.lShoulder, pts.rShoulder);
+      drawBone(pts.lShoulder, pts.lHip);
+      drawBone(pts.rShoulder, pts.rHip);
+      drawBone(pts.lHip, pts.rHip);
+
+      drawBone(pts.lShoulder, pts.lElbow);
+      drawBone(pts.lElbow, pts.lHand);
+      drawBone(pts.rShoulder, pts.rElbow);
+      drawBone(pts.rElbow, pts.rHand);
+
+      drawBone(pts.lHip, pts.lKnee, 4);
+      drawBone(pts.lKnee, pts.lAnkle, 4);
+      drawBone(pts.rHip, pts.rKnee, 4);
+      drawBone(pts.rKnee, pts.rAnkle, 4);
+
+      Object.values(pts).forEach(p => {
+        ctx.fillStyle = '#ff0055';
+        ctx.beginPath(); ctx.arc(p.x, p.y, 4.5, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = '#00ff87'; ctx.lineWidth = 1.5; ctx.stroke();
+      });
+    }
+
+    if (showAng) {
+      drawAngleTag(pts.rHip, pts.rKnee, pts.rAnkle, `168° (${t.tagKick})`, 'left', 'kick');
+      drawAngleTag(pts.lHip, pts.lKnee, pts.lAnkle, `172° (${t.tagSupport})`, 'right', 'support');
+      drawAngleTag(pts.rShoulder, pts.rElbow, pts.rHand, `78° (${t.tagGuard})`, 'right', 'guard');
+    }
+
+    if (showCOM) {
+      const comX = (pts.lHip.x + pts.rHip.x) / 2;
+      const comY = (pts.lHip.y + pts.rHip.y) / 2;
+      ctx.fillStyle = '#00e5ff';
+      ctx.beginPath(); ctx.arc(comX, comY, 6, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
+
+      ctx.beginPath(); ctx.setLineDash([4, 4]); ctx.moveTo(comX, comY); ctx.lineTo(comX, box.ry + box.rh * 0.95);
+      ctx.strokeStyle = '#00e5ff'; ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
+    }
+  }
+
+  function drawBone(p1, p2, width = 3) {
+    ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
+    ctx.strokeStyle = '#00ff87'; ctx.lineWidth = width; ctx.stroke();
+  }
+
+  function drawAngleTag(p1, p2, p3, text, alignDir = 'auto', tagKey = null) {
+    const jx = p2.x, jy = p2.y;
+    const stageW = stage.clientWidth;
+    const stageH = stage.clientHeight;
+    const padding = 10;
+
+    ctx.font = "bold 11px -apple-system, BlinkMacSystemFont, sans-serif";
+    const textMetrics = ctx.measureText(text);
+    const bw = Math.max( textMetrics.width + 16, 60 );
+    const bh = 22;
+
+    const offset = tagKey && tagOffsets[tagKey] ? tagOffsets[tagKey] : { x: 0, y: 0 };
+
+    let bx = jx;
+    let by = jy;
+
+    if (alignDir === 'left') {
+      bx = jx - bw / 2 - 40;
+      by = jy;
+    } else if (alignDir === 'right') {
+      bx = jx + bw / 2 + 40;
+      by = jy;
+    } else if (alignDir === 'bottom') {
+      bx = jx;
+      by = jy + bh + 20;
+    } else {
+      bx = jx - bw / 2 - 30;
+      by = jy - bh / 2;
+    }
+
+    if (offset.x === 0 && offset.y === 0 && currentBodyBBox) {
+      const margin = 20;
+      const bMinX = currentBodyBBox.minX - margin;
+      const bMaxX = currentBodyBBox.maxX + margin;
+      const bMinY = currentBodyBBox.minY - margin;
+      const bMaxY = currentBodyBBox.maxY + margin;
+
+      let rectMinX = bx - bw / 2;
+      let rectMaxX = bx + bw / 2;
+      let rectMinY = by - bh / 2;
+      let rectMaxY = by + bh / 2;
+
+      if (!(rectMaxX < bMinX || rectMinX > bMaxX || rectMaxY < bMinY || rectMaxY > bMaxY)) {
+        if (alignDir === 'left' || jx < (currentBodyBBox.minX + currentBodyBBox.maxX) / 2) {
+          bx = bMinX - bw / 2;
+        } else if (alignDir === 'right' || jx >= (currentBodyBBox.minX + currentBodyBBox.maxX) / 2) {
+          bx = bMaxX + bw / 2;
+        } else if (alignDir === 'bottom') {
+          by = bMaxY + bh / 2;
+        }
+      }
+    }
+
+    bx += offset.x;
+    by += offset.y;
+
+    let rx = bx - bw / 2;
+    let ry = by - bh / 2;
+
+    rx = Math.max(padding, Math.min(rx, stageW - bw - padding));
+    ry = Math.max(padding, Math.min(ry, stageH - bh - padding));
+    bx = rx + bw / 2;
+    by = ry + bh / 2;
+
+    if (tagKey) {
+      tagHitBoxes.push({ key: tagKey, rx, ry, bw, bh });
+    }
+
+    ctx.beginPath(); ctx.setLineDash([3, 3]); 
+    ctx.moveTo(jx, jy); 
+    ctx.lineTo(bx, by);
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.75)"; 
+    ctx.lineWidth = 1.2; 
+    ctx.stroke(); 
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = "rgba(10, 10, 15, 0.88)";
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(rx, ry, bw, bh, 4);
+    } else {
+      ctx.rect(rx, ry, bw, bh);
+    }
+    ctx.fill(); 
+    ctx.strokeStyle = "#00ff87"; 
+    ctx.lineWidth = 1.2; 
+    ctx.stroke();
+
+    ctx.fillStyle = "#ffffff"; 
+    ctx.textAlign = "center"; 
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, bx, by);
+  }
+
+  function initDragEvents() {
+    const getPos = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return {
+        x: clientX - rect.left,
+        y: clientY - rect.top
+      };
+    };
+
+    const onStart = (e) => {
+      const pos = getPos(e);
+      for (let i = tagHitBoxes.length - 1; i >= 0; i--) {
+        const box = tagHitBoxes[i];
+        if (pos.x >= box.rx && pos.x <= box.rx + box.bw &&
+            pos.y >= box.ry && pos.y <= box.ry + box.bh) {
+          draggingTag = box.key;
+          dragStartPos = pos;
+          activeOffsetStart = { ...tagOffsets[draggingTag] };
+          if (e.cancelable) e.preventDefault();
+          break;
+        }
+      }
+    };
+
+    const onMove = (e) => {
+      if (!draggingTag) return;
+      if (e.cancelable) e.preventDefault();
+      const pos = getPos(e);
+      const dx = pos.x - dragStartPos.x;
+      const dy = pos.y - dragStartPos.y;
+      tagOffsets[draggingTag] = {
+        x: activeOffsetStart.x + dx,
+        y: activeOffsetStart.y + dy
+      };
+      redrawCurrentFrame();
+    };
+
+    const onEnd = () => {
+      draggingTag = null;
+    };
+
+    canvas.addEventListener('mousedown', onStart);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onEnd);
+
+    canvas.addEventListener('touchstart', onStart, { passive: false });
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('touchend', onEnd);
+  }
+
+  function onPoseResults(results) {
+    if (isDemoMode) return;
+    lastPoseResults = results;
+    if (video.paused && currentRole === 'Coach') {
+      drawPoseFrame(results);
+    }
+  }
+
+  video.addEventListener('play', () => {
+    if (!isDemoMode) {
+      document.getElementById('freezeBanner').style.display = 'none';
+      ctx.clearRect(0, 0, stage.clientWidth, stage.clientHeight);
+    }
+  });
+
+  function drawPoseFrame(results) {
+    const stageW = stage.clientWidth, stageH = stage.clientHeight;
+    ctx.clearRect(0, 0, stageW, stageH);
+    tagHitBoxes = [];
+    if (!results || !results.poseLandmarks || !video.videoWidth) return;
+
+    const box = getMediaDisplayBox(video.videoWidth, video.videoHeight, stageW, stageH);
+    const landmarks = results.poseLandmarks;
+
+    const mappedPts = landmarks.map(pt => ({
+      x: box.rx + pt.x * box.rw,
+      y: box.ry + pt.y * box.rh,
+      visibility: pt.visibility
+    }));
+
+    const visiblePts = mappedPts.filter(p => p.visibility > 0.5);
+    if (visiblePts.length > 0) {
+      currentBodyBBox = {
+        minX: Math.min(...visiblePts.map(p => p.x)),
+        maxX: Math.max(...visiblePts.map(p => p.x)),
+        minY: Math.min(...visiblePts.map(p => p.y)),
+        maxY: Math.max(...visiblePts.map(p => p.y))
+      };
+    } else {
+      currentBodyBBox = null;
+    }
+
+    const showSkel = document.getElementById('showSkeleton').checked;
+    const showAng = document.getElementById('showAngles').checked;
+    const showCOM = document.getElementById('showCOM').checked;
+
+    if (showSkel) {
+      POSE_CONNECTIONS.forEach(([i, j]) => {
+        if (i >= 11 && j >= 11) {
+          const p1 = mappedPts[i], p2 = mappedPts[j];
+          if (p1.visibility > 0.5 && p2.visibility > 0.5) {
+            drawBone(p1, p2, 3);
+          }
+        }
+      });
+
+      mappedPts.forEach((p, idx) => {
+        if (idx >= 11 && p.visibility > 0.5) {
+          ctx.fillStyle = '#ff0055';
+          ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = '#00ff87'; ctx.lineWidth = 1.5; ctx.stroke();
+        }
+      });
+    }
+
+    const lHip = mappedPts[23], lKnee = mappedPts[25], lAnkle = mappedPts[27];
+    const rHip = mappedPts[24], rKnee = mappedPts[26], rAnkle = mappedPts[28];
+    const rShoulder = mappedPts[12], rElbow = mappedPts[14], rHand = mappedPts[16];
+
+    if (showAng) {
+      if (lHip && lKnee && lAnkle) lastAngles.leftKnee = drawJointAngleMapped(lHip, lKnee, lAnkle, 'right', 'support');
+      if (rHip && rKnee && rAnkle) lastAngles.rightKnee = drawJointAngleMapped(rHip, rKnee, rAnkle, 'left', 'kick');
+      if (rShoulder && rElbow && rHand) lastAngles.guardElbow = drawJointAngleMapped(rShoulder, rElbow, rHand, 'right', 'guard');
+    }
+
+    if (showCOM && lHip && rHip && lHip.visibility > 0.5 && rHip.visibility > 0.5) {
+      const comX = (lHip.x + rHip.x) / 2;
+      const comY = (lHip.y + rHip.y) / 2;
+      ctx.fillStyle = '#00E5FF';
+      ctx.beginPath(); ctx.arc(comX, comY, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 2; ctx.stroke();
+
+      ctx.beginPath(); ctx.setLineDash([4, 4]); ctx.moveTo(comX, comY); ctx.lineTo(comX, box.ry + box.rh);
+      ctx.strokeStyle = '#00E5FF'; ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
+    }
+  }
+
+  function calculateAngle(A, B, C) {
+    const rad = Math.atan2(C.y - B.y, C.x - B.x) - Math.atan2(A.y - B.y, A.x - B.x);
+    let angle = Math.abs((rad * 180.0) / Math.PI);
+    if (angle > 180.0) angle = 360.0 - angle;
+    return Math.round(angle);
+  }
+
+  function drawJointAngleMapped(p1, p2, p3, alignDir = 'auto', tagKey = null) {
+    if (p1.visibility > 0.5 && p2.visibility > 0.5 && p3.visibility > 0.5) {
+      const angle = calculateAngle(p1, p2, p3);
+      drawAngleTag(p1, p2, p3, `${angle}°`, alignDir, tagKey);
+      return angle;
+    }
+    return null;
+  }
+
+  function processVideoFrame() {
+    if (!isDemoMode && !video.paused && !video.ended && !isSeeking) {
+      updateSeekerUI();
+      requestAnimationFrame(processVideoFrame);
+    }
+  }
+
+  function togglePlay() {
+    if (isDemoMode) {
+      alert(i18n[currentLang].alertDemoPlay);
+      return;
+    }
+    if (video.paused) {
+      document.getElementById('freezeBanner').style.display = 'none';
+      ctx.clearRect(0, 0, stage.clientWidth, stage.clientHeight);
+      video.play().catch(e => console.log('Play failed:', e));
+      updateStatus('statusPlaying');
+      requestAnimationFrame(processVideoFrame);
+    } else {
+      video.pause();
+      if (currentRole === 'Coach') {
+        triggerFrameAnalysis();
+      }
+    }
+  }
+
+  function loadUserVideo(e) {
+    const file = e.target.files[0];
+    if (file) {
+      isDemoMode = false;
+      currentVideoFileName = file.name;
+      video.style.display = 'block';
+      const url = URL.createObjectURL(file);
+      video.src = url;
+      
+      video.onloadeddata = () => {
+        syncCanvasSize();
+        video.play().catch(() => {
+          video.pause();
+        });
+        updateStatus('statusPlaying');
+        requestAnimationFrame(processVideoFrame);
+      };
+
+      freezePoints = [];
+      renderTimelinePoints();
+      renderSidebarCards();
+    }
+  }
+
+  video.addEventListener('loadedmetadata', () => {
+    syncCanvasSize();
+    seeker.max = video.duration;
+  });
+
+  video.addEventListener('seeked', async () => {
+    if (isDemoMode) return;
+    if (video.paused && currentRole === 'Coach') {
+      triggerFrameAnalysis();
+    }
+  });
+
+  function updateSeekerUI() {
+    seeker.value = video.currentTime;
+    timeDisplay.innerText = formatTime(video.currentTime);
+  }
+
+  function formatTime(timeSec) {
+    const mins = Math.floor(timeSec / 60);
+    const secs = Math.floor(timeSec % 60);
+    const ms = Math.floor((timeSec % 1) * 10);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms}`;
+  }
+
+  function onSeekInput(val) {
+    if (isDemoMode) return;
+    isSeeking = true;
+    video.pause();
+    video.currentTime = val;
+    updateSeekerUI();
+  }
+
+  async function onSeekChange(val) {
+    if (isDemoMode) return;
+    video.currentTime = val;
+    isSeeking = false;
+    if (currentRole === 'Coach') {
+      triggerFrameAnalysis();
+    }
+  }
+
+  async function triggerFrameAnalysis() {
+    if (isDemoMode || currentRole !== 'Coach') return;
+    syncCanvasSize();
+    if (video.readyState >= 2 && video.videoWidth > 0 && !isProcessingFrame) {
+      updateStatus('statusAnalyzing');
+      isProcessingFrame = true;
+      try {
+        await pose.send({ image: video });
+      } catch (e) {
+        console.error("Frame analysis failed", e);
+      } finally {
+        isProcessingFrame = false;
+      }
+    }
+  }
+
+  async function freezeAndAnalyze() {
+    if (isDemoMode) {
+      alert(i18n[currentLang].alertDemoCapture);
+      return;
+    }
+    video.pause();
+    await triggerFrameAnalysis();
+
+    const timeSec = video.currentTime;
+    const timeStr = formatTime(timeSec);
+    document.getElementById('freezeTime').innerText = timeStr;
+    document.getElementById('freezeBanner').style.display = 'block';
+
+    const newPoint = {
+      id: Date.now(),
+      time: timeSec,
+      timeStr: timeStr,
+      angles: { ...lastAngles }
+    };
+
+    freezePoints.push(newPoint);
+    renderTimelinePoints();
+    renderSidebarCards();
+    updateStatus('statusSaved');
+  }
+
+  async function jumpToPoint(timeSec) {
+    if (isDemoMode) return;
+    video.pause();
+    video.currentTime = timeSec;
+    updateSeekerUI();
+    document.getElementById('freezeTime').innerText = formatTime(timeSec);
+    document.getElementById('freezeBanner').style.display = 'block';
+    if (currentRole === 'Coach') {
+      await triggerFrameAnalysis();
+    }
+  }
+
+  function deletePoint(id, event) {
+    if (event) event.stopPropagation();
+    freezePoints = freezePoints.filter(p => p.id !== id);
+    renderTimelinePoints();
+    renderSidebarCards();
+  }
+
+  function renderTimelinePoints() {
+    const container = document.getElementById('pointsContainer');
+    const t = i18n[currentLang];
+    const unit = freezePoints.length > 1 ? t.unitPoints : t.unitPoint;
+    document.getElementById('pointCount').innerText = `${freezePoints.length} ${unit}`;
+
+    if (freezePoints.length === 0) {
+      container.innerHTML = `<span style="font-size:0.8rem; color:var(--text-muted);">${t.emptyPoints}</span>`;
+      return;
+    }
+
+    container.innerHTML = freezePoints.map(p => `
+      <div class="point-chip" onclick="jumpToPoint(${p.time})">
+        <span>${t.chipPoint}</span>
+        <span class="time-lbl">${p.timeStr}</span>
+        <button class="del-btn" title="Delete" onclick="deletePoint(${p.id}, event)">✕</button>
+      </div>
+    `).join('');
+  }
+
+  function renderSidebarCards() {
+    const recordsContainer = document.getElementById('angleRecords');
+    const t = i18n[currentLang];
+
+    if (freezePoints.length === 0) {
+      recordsContainer.innerHTML = t.emptyRecords;
+      return;
+    }
+
+    recordsContainer.innerHTML = freezePoints.slice().reverse().map(p => `
+      <div class="snapshot-card">
+        <button class="card-del" title="Delete" onclick="deletePoint(${p.id}, event)">🗑️</button>
+        <div style="color:#00ff87; font-weight:bold; cursor:pointer;" onclick="jumpToPoint(${p.time})">${t.timePoint}${p.timeStr}</div>
+        <div>${t.cardKick}<b>${p.angles.rightKnee ? p.angles.rightKnee + '°' : '168°'}</b></div>
+        <div>${t.cardSupport}<b>${p.angles.leftKnee ? p.angles.leftKnee + '°' : '172°'}</b></div>
+        <div>${t.cardGuard}<b>${p.angles.guardElbow ? p.angles.guardElbow + '°' : '78°'}</b></div>
+      </div>
+    `).join('');
+  }
+
+  function updateStatus(statusKey) {
+    currentStatusKey = statusKey;
+    document.getElementById('statusBadge').innerText = i18n[currentLang][statusKey];
+  }
+
+  function switchLanguage(lang) {
+    currentLang = lang;
+    const t = i18n[lang];
+
+    document.getElementById('headerSubTitle').innerText = t.headerSubTitle;
+    document.getElementById('lblViewRole').innerText = t.lblViewRole;
+    document.getElementById('optStudent').innerText = t.optStudent;
+    document.getElementById('optCoach').innerText = t.optCoach;
+
+    document.getElementById('optThemeAuto').innerText = t.optThemeAuto;
+    document.getElementById('optThemeLight').innerText = t.optThemeLight;
+    document.getElementById('optThemeDark').innerText = t.optThemeDark;
+
+    document.getElementById('lblFreezePoint').innerText = t.lblFreezePoint;
+    document.getElementById('lblTimeFine').innerText = t.lblTimeFine;
+    document.getElementById('btnPlayPause').innerText = t.btnPlayPause;
+    document.getElementById('btnCapture').innerText = t.btnCapture;
+
+    const recordBtn = document.getElementById('coachRecordBtn');
+    if (isRecording) recordBtn.innerText = t.btnRecordStop;
+    else recordBtn.innerText = t.btnRecordStart;
+
+    document.getElementById('playFeedbackBtn').innerText = t.btnPlayAudio;
+    document.getElementById('lblTimelineHeader').innerText = t.lblTimelineHeader;
+    document.getElementById('titleUpload').innerText = t.titleUpload;
+    document.getElementById('btnSubmitCoach').innerText = t.btnSubmitCoach;
+    document.getElementById('titlePendingList').innerText = t.titlePendingList;
+    document.getElementById('titleReviewedList').innerText = t.titleReviewedList;
+    document.getElementById('reviewedList').innerText = t.emptyReviewed;
+    document.getElementById('titleSubmissions').innerText = t.titleSubmissions;
+    
+    const coachSelect = document.getElementById('submissionSelect');
+    if (submittedVideos.length === 0 && coachSelect.options.length > 0) {
+      document.getElementById('optSubmissionItem').innerText = t.optSubmissionItem;
+    }
+
+    document.getElementById('titleLayerSettings').innerText = t.titleLayerSettings;
+    document.getElementById('lblShowSkeleton').innerText = t.lblShowSkeleton;
+    document.getElementById('lblShowAngles').innerText = t.lblShowAngles;
+    document.getElementById('lblShowCOM').innerText = t.lblShowCOM;
+    document.getElementById('titleAngleRecords').innerText = t.titleAngleRecords;
+    document.getElementById('titleSystemStatus').innerText = t.titleSystemStatus;
+    document.getElementById('lblStatus').innerText = t.lblStatus;
+    document.getElementById('audioStatus').innerText = audioBlobUrl ? t.audioSaved : t.noAudio;
+
+    updateStatus(currentStatusKey);
+    redrawCurrentFrame();
+    renderTimelinePoints();
+    renderSidebarCards();
+    renderPendingList();
+  }
+
+  function switchRole(role) {
+    currentRole = role;
+    const isCoach = role === 'Coach';
+    
+    document.getElementById('studentPanel').style.display = isCoach ? 'none' : 'block';
+    document.getElementById('coachPanel').style.display = isCoach ? 'block' : 'none';
+    
+    document.getElementById('btnCapture').style.display = isCoach ? 'inline-block' : 'none';
+    document.getElementById('coachRecordBtn').style.display = isCoach ? 'inline-block' : 'none';
+    document.getElementById('timeline-points').style.display = isCoach ? 'block' : 'none';
+
+    document.getElementById('secLayerSettings').style.display = isCoach ? 'block' : 'none';
+    document.getElementById('secAngleRecords').style.display = isCoach ? 'block' : 'none';
+    document.getElementById('secSystemStatus').style.display = isCoach ? 'block' : 'none';
+
+    updateStatus(isCoach ? 'statusCoachView' : 'statusStudentView');
+    redrawCurrentFrame();
+  }
+
+  async function toggleRecording() {
+    const btn = document.getElementById('coachRecordBtn');
+    const t = i18n[currentLang];
+    if (!isRecording) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(audioChunks, { type: 'audio/mp3' });
+          audioBlobUrl = URL.createObjectURL(blob);
+          document.getElementById('audioStatus').innerText = i18n[currentLang].audioSaved;
+          document.getElementById('playFeedbackBtn').style.display = 'inline-block';
+        };
+        mediaRecorder.start();
+        isRecording = true;
+        btn.innerText = t.btnRecordStop;
+      } catch (err) {
+        alert(t.alertMic);
+      }
+    } else {
+      mediaRecorder.stop();
+      isRecording = false;
+      btn.innerText = t.btnRecordStart;
+    }
+  }
+
+  function playFeedback() {
+    if (audioBlobUrl) {
+      new Audio(audioBlobUrl).play();
+    }
+  }
+
+  function renderPendingList() {
+    const pendingListEl = document.getElementById('pendingList');
+    const t = i18n[currentLang];
+
+    if (submittedVideos.length === 0) {
+      pendingListEl.innerHTML = t.emptyPending;
+      pendingListEl.style.justifyContent = "center";
+      return;
+    }
+
+    pendingListEl.style.justifyContent = "flex-start";
+    pendingListEl.innerHTML = submittedVideos.map(item => `
+      <div class="pending-item">
+        <span>📹 ${item.title}</span>
+        <span style="font-size:0.75rem; color:var(--text-muted);">⏳ Pending</span>
+      </div>
+    `).join('');
+  }
+
+  function submitToCoach() {
+    const titleName = isDemoMode ? "Aaron - High Kick Apex" : `Student Submission (${currentVideoFileName})`;
+    
+    const newSubmission = {
+      id: Date.now(),
+      title: titleName,
+      status: 'pending'
+    };
+    
+    submittedVideos.push(newSubmission);
+    renderPendingList();
+
+    const coachSelect = document.getElementById('submissionSelect');
+    
+    if (submittedVideos.length === 1 && coachSelect.options[0] && coachSelect.options[0].value === "") {
+      coachSelect.innerHTML = "";
+    }
+
+    const option = document.createElement('option');
+    option.value = newSubmission.id;
+    option.text = newSubmission.title;
+    coachSelect.add(option);
+    coachSelect.value = newSubmission.id;
+
+    alert(i18n[currentLang].alertSubmitted);
+  }
+</script>
+</body>
+</html>
