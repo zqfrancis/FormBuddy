@@ -246,6 +246,26 @@
   }
   body:not(.light-theme) .pending-item { color: #00ff87; }
 
+  /* ---- Directed session (v2) ---- */
+  .session-card { background: var(--bg-card); border:1px solid var(--border-input); border-radius:6px; padding:10px; }
+  .session-card .s-title { font-weight:700; color:var(--text-main); margin-bottom:4px; word-break:break-all; }
+  .session-card .s-meta { font-size:0.78rem; color:var(--text-muted); margin-bottom:8px; }
+  .session-card .s-btns { display:flex; gap:8px; flex-wrap:wrap; }
+  .session-card .s-btns button { font-size:0.8rem; padding:6px 10px; }
+  #directOverlay {
+    position: fixed; left:50%; transform:translateX(-50%); bottom:14px; z-index:50;
+    background: rgba(10,10,10,0.92); color:#fff; border:1px solid #00ff87; border-radius:24px;
+    padding:8px 14px; display:none; align-items:center; gap:10px; font-size:0.85rem; font-weight:600;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5); max-width:92vw;
+  }
+  body.light-theme #directOverlay { background: rgba(255,255,255,0.95); color:#111; }
+  #directOverlay .direct-progress { width:110px; height:6px; background:#333; border-radius:3px; overflow:hidden; }
+  #directOverlay .direct-progress > div { height:100%; width:0%; background:#00ff87; }
+  #directOverlay.rec { border-color:#ff4757; }
+  #directOverlay .rec-dot { width:10px; height:10px; border-radius:50%; background:#ff4757; animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity:0.25; } }
+  #directStopBtn { background:#ff4757 !important; border:none !important; color:#fff !important; border-radius:16px; padding:6px 12px !important; }
+
   @media (max-width: 768px) {
     header {
       flex-direction: column;
@@ -323,6 +343,15 @@
       <div class="control-row">
         <button id="btnPlayPause" onclick="togglePlay()">⏯️ Play / Pause</button>
         <button id="btnCapture" style="display:none; background:#00ff87 !important; color:#000 !important; border:none !important;" onclick="freezeAndAnalyze()">📌 Freeze Frame and Analyze</button>
+        <span id="freezeHoldWrap" style="display:none; align-items:center; gap:6px; font-size:0.85rem; font-weight:600;">
+          <span id="holdLabel">Hold:</span>
+          <select id="freezeHoldSelect" style="padding:6px 8px;">
+            <option value="3">3s</option>
+            <option value="5" selected>5s</option>
+            <option value="10">10s</option>
+            <option value="15">15s</option>
+          </select>
+        </span>
         <button id="coachRecordBtn" style="display:none; background:#ff4757 !important; color:#fff !important; border:none !important;" onclick="toggleRecording()">🎙️ Record Audio</button>
         <button id="playFeedbackBtn" style="display:none;" onclick="playFeedback()">▶️ Play Audio</button>
       </div>
@@ -342,6 +371,7 @@
       <div class="panel-section">
         <h3 id="titleUpload">📤 Upload Video</h3>
         <input type="file" id="videoInput" accept="video/*" onchange="loadUserVideo(event)" style="width:100%; margin-bottom:10px;" />
+        <div id="videoTip" style="font-size:0.78rem; color:var(--text-muted); margin-bottom:4px;">💡 Tip: 15–20s videos work best.</div>
         <button id="btnSubmitCoach" style="width:100%; margin-top:8px;" onclick="submitToCoach()">🚀 Submit to Coach</button>
       </div>
 
@@ -363,6 +393,11 @@
       </select>
     </div>
 
+    <div id="sessionSection" class="panel-section" style="display:none;">
+      <h3 id="titleSessions">🎬 Directed Sessions</h3>
+      <div id="sessionList" style="display:flex; flex-direction:column; gap:8px; font-size:0.83rem; color:var(--text-muted);"></div>
+    </div>
+
     <div id="secLayerSettings" class="panel-section" style="display:none;">
       <h3 id="titleLayerSettings">⚙️ AI Layer Settings</h3>
       <label style="display:block; margin-bottom:10px;"><input type="checkbox" id="showSkeleton" checked onchange="redrawCurrentFrame()" /> <span id="lblShowSkeleton">Skeleton Line (No Head)</span></label>
@@ -381,6 +416,13 @@
       <div id="audioStatus" style="margin-top:8px; font-size:0.85rem; color:var(--text-muted);">No voice feedback yet.</div>
     </div>
   </div>
+</div>
+
+<div id="directOverlay">
+  <span class="rec-dot" id="directRecDot" style="display:none;"></span>
+  <span id="directOverlayText"></span>
+  <span class="direct-progress"><div id="directProgressFill"></div></span>
+  <button id="directStopBtn" onclick="stopDirectMode()">⏹</button>
 </div>
 
 <script>
@@ -434,6 +476,7 @@
       statusSaved: "定格分析节点已保存",
       statusStudentView: "学员视图模式",
       statusCoachView: "教练视图模式",
+      statusRecording: "🔴 导播录制中",
       noAudio: "暂无语音点评。",
       audioSaved: "✅ 已录制语音指导点评",
       tagKick: "高踢延伸",
@@ -451,7 +494,23 @@
       alertDemoPlay: "请在左侧上传本地视频体验动态播放！",
       alertDemoCapture: "请上传本地视频体验抓取功能！",
       alertMic: "需要麦克风权限！",
-      alertSubmitted: "已提交给教练！"
+      alertSubmitted: "已提交给教练！",
+      holdLabel: "停留:",
+      titleSessions: "🎬 导播录制",
+      sessionEmpty: "暂无录制。点'🎙️ 录制语音点评'开始导播录制。",
+      btnPreview: "▶️ 同步回放",
+      btnExport: "⬇️ 导出视频",
+      btnDeleteSession: "删除",
+      confirmDeleteSession: "确定删除这条录制吗？",
+      videoTip: "💡 建议上传 15–20 秒的视频。",
+      recOn: "🔴 录制中",
+      replaying: "▶️ 同步回放中",
+      exporting: "⬇️ 导出中，请勿切换标签页",
+      exportDone: "✅ 导出完成，已开始下载",
+      exportCancelled: "已取消导出",
+      alertNoSession: "没有可回放的录制。",
+      alertExportNoSupport: "当前浏览器不支持视频导出。",
+      sessionMeta: "个事件"
     },
     en: {
       headerSubTitle: "(Motion Analysis)",
@@ -490,6 +549,7 @@
       statusSaved: "Freeze point saved",
       statusStudentView: "Student Mode",
       statusCoachView: "Coach Mode",
+      statusRecording: "🔴 Directed recording",
       noAudio: "No voice feedback yet.",
       audioSaved: "✅ Audio recorded",
       tagKick: "High Kick Extension",
@@ -507,7 +567,23 @@
       alertDemoPlay: "Upload local video to play!",
       alertDemoCapture: "Upload video to test capture!",
       alertMic: "Microphone permission required!",
-      alertSubmitted: "Submitted to coach!"
+      alertSubmitted: "Submitted to coach!",
+      holdLabel: "Hold:",
+      titleSessions: "🎬 Directed Sessions",
+      sessionEmpty: "No sessions yet. Tap 'Record Audio' to start a directed session.",
+      btnPreview: "▶️ Preview",
+      btnExport: "⬇️ Export Video",
+      btnDeleteSession: "Delete",
+      confirmDeleteSession: "Delete this session?",
+      videoTip: "💡 Tip: 15–20s videos work best.",
+      recOn: "🔴 REC",
+      replaying: "▶️ Replaying",
+      exporting: "⬇️ Exporting, keep this tab open",
+      exportDone: "✅ Export done, download started",
+      exportCancelled: "Export cancelled",
+      alertNoSession: "No session to play.",
+      alertExportNoSupport: "Video export is not supported in this browser.",
+      sessionMeta: "events"
     }
   };
 
@@ -520,6 +596,22 @@
 
   let isDemoMode = true;
   let isRecording = false, mediaRecorder, audioChunks = [], audioBlobUrl = null;
+  let mediaStreamRef = null;
+
+  // ---- Directed session (v2) state ----
+  let recSession = null;          // {id, videoName, createdAt, events:[], duration}
+  let recStartPerf = 0;
+  let recTickTimer = null;
+  let currentVideoFile = null;    // File/Blob of the loaded video (for IDB persistence)
+  let currentLoadedVideoUrl = null; // blob URL currently in the player (to avoid reloading)
+  let poseCache = new Map();      // rounded videoTime -> poseLandmarks (captured while recording)
+  let sessions = [];              // loaded from IndexedDB: {id, videoName, createdAt, duration, events, audioBlob, videoBlob, audioUrl, videoUrl}
+  let isReplaying = false, replaySession = null, replayAudioEl = null, replayRaf = 0, replayEventIdx = 0;
+  let replayFreezeUntil = -1, replayFreezeResults = null;
+  let isExporting = false, exportingSession = null, exportAudioEl = null, exportRaf = 0, exportEventIdx = 0;
+  let exportFreezeUntil = -1, exportFreezeResults = null, exportCancelled = false;
+  let exportMediaRecorder = null, exportAudioCtx = null;
+  const r2 = (n) => Math.round(n * 100) / 100;
   let lastAngles = { rightKnee: 168, leftKnee: 172, guardElbow: 78 };
   let isSeeking = false;
 
@@ -671,6 +763,7 @@
     renderSidebarCards();
     initDragEvents();
     renderPendingList();
+    loadSessions();
   });
 
   function redrawCurrentFrame() {
@@ -911,23 +1004,26 @@
   }
 
   function onPoseResults(results) {
-    if (isDemoMode) return;
+    if (isDemoMode || isExporting) return;
     lastPoseResults = results;
+    if (isRecording && results.poseLandmarks && video.paused && !isDemoMode) {
+      poseCache.set(r2(video.currentTime), results.poseLandmarks);
+    }
     if (video.paused && currentRole === 'Coach') {
       drawPoseFrame(results);
     }
   }
 
   video.addEventListener('play', () => {
-    if (!isDemoMode) {
+    if (!isDemoMode && !isExporting) {
       document.getElementById('freezeBanner').style.display = 'none';
       ctx.clearRect(0, 0, stage.clientWidth, stage.clientHeight);
     }
   });
 
-  function drawPoseFrame(results) {
+  function drawPoseFrame(results, clearBg = true) {
     const stageW = stage.clientWidth, stageH = stage.clientHeight;
-    ctx.clearRect(0, 0, stageW, stageH);
+    if (clearBg) ctx.clearRect(0, 0, stageW, stageH);
     tagHitBoxes = [];
     if (!results || !results.poseLandmarks || !video.videoWidth) return;
 
@@ -1029,10 +1125,12 @@
       document.getElementById('freezeBanner').style.display = 'none';
       ctx.clearRect(0, 0, stage.clientWidth, stage.clientHeight);
       video.play().catch(e => console.log('Play failed:', e));
+      logRecEvent({ type: 'play', videoTime: r2(video.currentTime) });
       updateStatus('statusPlaying');
       requestAnimationFrame(processVideoFrame);
     } else {
       video.pause();
+      logRecEvent({ type: 'pause', videoTime: r2(video.currentTime) });
       if (currentRole === 'Coach') {
         triggerFrameAnalysis();
       }
@@ -1044,8 +1142,10 @@
     if (file) {
       isDemoMode = false;
       currentVideoFileName = file.name;
+      currentVideoFile = file;
       video.style.display = 'block';
       const url = URL.createObjectURL(file);
+      currentLoadedVideoUrl = url;
       video.src = url;
       
       video.onloadeddata = () => {
@@ -1069,7 +1169,7 @@
   });
 
   video.addEventListener('seeked', async () => {
-    if (isDemoMode) return;
+    if (isDemoMode || isExporting) return;
     if (video.paused && currentRole === 'Coach') {
       triggerFrameAnalysis();
     }
@@ -1099,6 +1199,7 @@
     if (isDemoMode) return;
     video.currentTime = val;
     isSeeking = false;
+    logRecEvent({ type: 'seek', videoTime: r2(parseFloat(val)) });
     if (currentRole === 'Coach') {
       triggerFrameAnalysis();
     }
@@ -1130,6 +1231,8 @@
 
     const timeSec = video.currentTime;
     const timeStr = formatTime(timeSec);
+    const holdSel = document.getElementById('freezeHoldSelect');
+    const hold = holdSel ? parseInt(holdSel.value, 10) : 5;
     document.getElementById('freezeTime').innerText = timeStr;
     document.getElementById('freezeBanner').style.display = 'block';
 
@@ -1137,6 +1240,7 @@
       id: Date.now(),
       time: timeSec,
       timeStr: timeStr,
+      hold: hold,
       angles: { ...lastAngles }
     };
 
@@ -1144,6 +1248,13 @@
     renderTimelinePoints();
     renderSidebarCards();
     updateStatus('statusSaved');
+    logRecEvent({
+      type: 'freeze',
+      videoTime: r2(timeSec),
+      hold: hold,
+      angles: { ...lastAngles },
+      landmarks: lastPoseResults && lastPoseResults.poseLandmarks ? lastPoseResults.poseLandmarks : null
+    });
   }
 
   async function jumpToPoint(timeSec) {
@@ -1151,6 +1262,7 @@
     video.pause();
     video.currentTime = timeSec;
     updateSeekerUI();
+    logRecEvent({ type: 'seek', videoTime: r2(timeSec) });
     document.getElementById('freezeTime').innerText = formatTime(timeSec);
     document.getElementById('freezeBanner').style.display = 'block';
     if (currentRole === 'Coach') {
@@ -1180,6 +1292,7 @@
       <div class="point-chip" onclick="jumpToPoint(${p.time})">
         <span>${t.chipPoint}</span>
         <span class="time-lbl">${p.timeStr}</span>
+        ${p.hold ? `<span style="font-size:0.75rem; color:var(--text-muted);">⏱${p.hold}s</span>` : ''}
         <button class="del-btn" title="Delete" onclick="deletePoint(${p.id}, event)">✕</button>
       </div>
     `).join('');
@@ -1240,6 +1353,10 @@
     document.getElementById('titleReviewedList').innerText = t.titleReviewedList;
     document.getElementById('reviewedList').innerText = t.emptyReviewed;
     document.getElementById('titleSubmissions').innerText = t.titleSubmissions;
+    document.getElementById('holdLabel').innerText = t.holdLabel;
+    document.getElementById('titleSessions').innerText = t.titleSessions;
+    document.getElementById('videoTip').innerText = t.videoTip;
+    renderSessionList();
     
     const coachSelect = document.getElementById('submissionSelect');
     if (submittedVideos.length === 0 && coachSelect.options.length > 0) {
@@ -1270,6 +1387,8 @@
     document.getElementById('coachPanel').style.display = isCoach ? 'block' : 'none';
     
     document.getElementById('btnCapture').style.display = isCoach ? 'inline-block' : 'none';
+    document.getElementById('freezeHoldWrap').style.display = isCoach ? 'inline-flex' : 'none';
+    document.getElementById('sessionSection').style.display = isCoach ? 'block' : 'none';
     document.getElementById('coachRecordBtn').style.display = isCoach ? 'inline-block' : 'none';
     document.getElementById('timeline-points').style.display = isCoach ? 'block' : 'none';
 
@@ -1281,31 +1400,90 @@
     redrawCurrentFrame();
   }
 
+  // ---- Directed session engine (v2) ----
+  function recClock() { return (performance.now() - recStartPerf) / 1000; }
+  function logRecEvent(ev) {
+    if (isRecording && recSession) {
+      ev.t = r2(recClock());
+      recSession.events.push(ev);
+    }
+  }
+
   async function toggleRecording() {
     const btn = document.getElementById('coachRecordBtn');
     const t = i18n[currentLang];
     if (!isRecording) {
+      if (isDemoMode) { alert(t.alertDemoCapture); return; }
+      if (isReplaying) stopReplay();
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaStreamRef = stream;
+        recSession = {
+          id: Date.now(),
+          videoName: currentVideoFileName,
+          createdAt: Date.now(),
+          events: [],
+          duration: 0
+        };
+        recStartPerf = performance.now();
+        poseCache = new Map();
+        video.loop = false;
+        video.muted = true;
+        logRecEvent({ type: 'seek', videoTime: r2(video.currentTime) });
+        logRecEvent({ type: video.paused ? 'pause' : 'play', videoTime: r2(video.currentTime) });
+
         mediaRecorder = new MediaRecorder(stream);
         audioChunks = [];
-        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-        mediaRecorder.onstop = () => {
-          const blob = new Blob(audioChunks, { type: 'audio/mp3' });
-          audioBlobUrl = URL.createObjectURL(blob);
-          document.getElementById('audioStatus').innerText = i18n[currentLang].audioSaved;
-          document.getElementById('playFeedbackBtn').style.display = 'inline-block';
-        };
+        mediaRecorder.ondataavailable = e => { if (e.data && e.data.size) audioChunks.push(e.data); };
+        mediaRecorder.onstop = () => saveRecSession();
         mediaRecorder.start();
         isRecording = true;
         btn.innerText = t.btnRecordStop;
+        showDirectOverlay('rec');
+        recTickTimer = setInterval(updateRecOverlay, 500);
+        updateStatus('statusRecording');
       } catch (err) {
         alert(t.alertMic);
       }
     } else {
-      mediaRecorder.stop();
+      try { mediaRecorder.stop(); } catch (e) {}
+      if (mediaStreamRef) { mediaStreamRef.getTracks().forEach(tr => tr.stop()); mediaStreamRef = null; }
       isRecording = false;
       btn.innerText = t.btnRecordStart;
+      if (recTickTimer) { clearInterval(recTickTimer); recTickTimer = null; }
+      hideDirectOverlay();
+    }
+  }
+
+  async function saveRecSession() {
+    const t = i18n[currentLang];
+    try {
+      const blob = new Blob(audioChunks, { type: (mediaRecorder && mediaRecorder.mimeType) || 'audio/webm' });
+      recSession.duration = r2(recClock());
+      const stored = {
+        id: recSession.id,
+        videoName: recSession.videoName,
+        createdAt: recSession.createdAt,
+        duration: recSession.duration,
+        events: recSession.events,
+        poseCache: [...poseCache.entries()],
+        audioBlob: blob,
+        videoBlob: currentVideoFile
+      };
+      await idbPut(stored);
+      stored.audioUrl = URL.createObjectURL(stored.audioBlob);
+      stored.videoUrl = stored.videoBlob ? URL.createObjectURL(stored.videoBlob) : null;
+      stored.poseCacheMap = new Map(stored.poseCache || []);
+      sessions.unshift(stored);
+      renderSessionList();
+      audioBlobUrl = stored.audioUrl;
+      document.getElementById('audioStatus').innerText = t.audioSaved;
+      document.getElementById('playFeedbackBtn').style.display = 'inline-block';
+    } catch (err) {
+      console.error('saveRecSession failed', err);
+    } finally {
+      recSession = null;
+      video.muted = false;
     }
   }
 
@@ -1313,6 +1491,384 @@
     if (audioBlobUrl) {
       new Audio(audioBlobUrl).play();
     }
+  }
+
+  // ---- IndexedDB persistence ----
+  const idb = { db: null };
+  function idbOpen() {
+    return new Promise((resolve, reject) => {
+      try {
+        const req = indexedDB.open('formbuddy', 1);
+        req.onupgradeneeded = () => { req.result.createObjectStore('sessions', { keyPath: 'id' }); };
+        req.onsuccess = () => { idb.db = req.result; resolve(); };
+        req.onerror = () => reject(req.error);
+      } catch (e) { reject(e); }
+    });
+  }
+  function idbPut(s) {
+    return new Promise((resolve, reject) => {
+      const tx = idb.db.transaction('sessions', 'readwrite');
+      tx.objectStore('sessions').put(s);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+  function idbAll() {
+    return new Promise((resolve, reject) => {
+      const tx = idb.db.transaction('sessions', 'readonly');
+      const q = tx.objectStore('sessions').getAll();
+      q.onsuccess = () => resolve(q.result || []);
+      q.onerror = () => reject(q.error);
+    });
+  }
+  function idbDel(id) {
+    return new Promise((resolve, reject) => {
+      const tx = idb.db.transaction('sessions', 'readwrite');
+      tx.objectStore('sessions').delete(id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+  async function loadSessions() {
+    try {
+      await idbOpen();
+      const all = await idbAll();
+      all.sort((a, b) => b.createdAt - a.createdAt);
+      sessions = all.map(s => ({
+        ...s,
+        audioUrl: URL.createObjectURL(s.audioBlob),
+        videoUrl: s.videoBlob ? URL.createObjectURL(s.videoBlob) : null,
+        poseCacheMap: new Map(s.poseCache || [])
+      }));
+    } catch (e) {
+      console.error('IDB unavailable', e);
+      sessions = [];
+    }
+    renderSessionList();
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function renderSessionList() {
+    const box = document.getElementById('sessionList');
+    if (!box) return;
+    const t = i18n[currentLang];
+    if (sessions.length === 0) {
+      box.innerHTML = `<div>${t.sessionEmpty}</div>`;
+      return;
+    }
+    box.innerHTML = sessions.map(s => {
+      const d = new Date(s.createdAt);
+      const dateStr = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      return `
+      <div class="session-card">
+        <div class="s-title">🎬 ${escapeHtml(s.videoName)}</div>
+        <div class="s-meta">${dateStr} · ${Number(s.duration).toFixed(1)}s · ${s.events.length} ${t.sessionMeta}</div>
+        <div class="s-btns">
+          <button onclick="previewSession(${s.id})">${t.btnPreview}</button>
+          <button onclick="exportSession(${s.id})">${t.btnExport}</button>
+          <button onclick="deleteSession(${s.id})" style="color:#ff4757 !important;">✕</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  async function deleteSession(id) {
+    const t = i18n[currentLang];
+    if (!confirm(t.confirmDeleteSession)) return;
+    try { await idbDel(id); } catch (e) {}
+    sessions = sessions.filter(s => s.id !== id);
+    renderSessionList();
+  }
+
+  async function ensureSessionVideo(s) {
+    if (currentLoadedVideoUrl !== s.videoUrl) {
+      stopReplay();
+      isDemoMode = false;
+      currentVideoFileName = s.videoName;
+      currentVideoFile = s.videoBlob;
+      video.style.display = 'block';
+      video.src = s.videoUrl;
+      currentLoadedVideoUrl = s.videoUrl;
+      await new Promise((resolve) => {
+        video.onloadeddata = () => { syncCanvasSize(); resolve(); };
+      });
+      freezePoints = [];
+      renderTimelinePoints();
+      renderSidebarCards();
+    }
+  }
+
+  // ---- Synced preview ----
+  async function previewSession(id) {
+    const t = i18n[currentLang];
+    const s = sessions.find(x => x.id === id);
+    if (!s) { alert(t.alertNoSession); return; }
+    if (isRecording || isExporting) return;
+    stopReplay();
+    await ensureSessionVideo(s);
+    isReplaying = true;
+    replaySession = s;
+    replayEventIdx = 0;
+    replayFreezeUntil = -1;
+    replayFreezeResults = null;
+    video.loop = false;
+    video.muted = true;
+    showDirectOverlay('replay');
+    replayAudioEl = new Audio(s.audioUrl);
+    replayAudioEl.onended = () => stopReplay();
+    try { await replayAudioEl.play(); } catch (e) { stopReplay(); return; }
+    replayRaf = requestAnimationFrame(replayTick);
+  }
+
+  function applySessionEvent(ev, mode) {
+    const audioEl = mode === 'preview' ? replayAudioEl : exportAudioEl;
+    const tA = audioEl ? audioEl.currentTime : 0;
+    if (ev.type === 'seek') {
+      video.pause();
+      video.currentTime = ev.videoTime;
+      updateSeekerUI();
+      if (mode === 'preview') {
+        document.getElementById('freezeBanner').style.display = 'none';
+        replayFreezeUntil = -1; replayFreezeResults = null;
+        if (currentRole === 'Coach') triggerFrameAnalysis();
+      } else {
+        exportFreezeUntil = -1; exportFreezeResults = null;
+      }
+    } else if (ev.type === 'play') {
+      if (mode === 'preview') {
+        document.getElementById('freezeBanner').style.display = 'none';
+        replayFreezeUntil = -1; replayFreezeResults = null;
+      } else {
+        exportFreezeUntil = -1; exportFreezeResults = null;
+      }
+      video.play().catch(() => {});
+    } else if (ev.type === 'pause') {
+      video.pause();
+      if (mode === 'preview' && currentRole === 'Coach') triggerFrameAnalysis();
+    } else if (ev.type === 'freeze') {
+      video.pause();
+      video.currentTime = ev.videoTime;
+      updateSeekerUI();
+      const results = ev.landmarks ? { poseLandmarks: ev.landmarks } : null;
+      const hold = ev.hold || 5;
+      if (mode === 'preview') {
+        document.getElementById('freezeTime').innerText = formatTime(ev.videoTime);
+        document.getElementById('freezeBanner').style.display = 'block';
+        replayFreezeUntil = tA + hold;
+        replayFreezeResults = results;
+        if (results) drawPoseFrame(results);
+      } else {
+        exportFreezeUntil = tA + hold;
+        exportFreezeResults = results;
+      }
+    }
+  }
+
+  function replayTick() {
+    if (!isReplaying || !replayAudioEl) return;
+    const s = replaySession;
+    const tA = replayAudioEl.currentTime;
+    while (replayEventIdx < s.events.length && s.events[replayEventIdx].t <= tA) {
+      applySessionEvent(s.events[replayEventIdx], 'preview');
+      replayEventIdx++;
+    }
+    if (replayFreezeUntil > 0) {
+      if (tA < replayFreezeUntil) {
+        if (!video.paused) video.pause();
+      } else {
+        replayFreezeUntil = -1;
+        replayFreezeResults = null;
+        document.getElementById('freezeBanner').style.display = 'none';
+      }
+    }
+    updateDirectProgress(tA / (s.duration || 1));
+    replayRaf = requestAnimationFrame(replayTick);
+  }
+
+  function stopReplay() {
+    if (replayRaf) cancelAnimationFrame(replayRaf);
+    replayRaf = 0;
+    isReplaying = false;
+    replaySession = null;
+    if (replayAudioEl) { try { replayAudioEl.pause(); } catch (e) {} replayAudioEl = null; }
+    if (!isExporting) {
+      video.pause();
+      video.muted = false;
+      document.getElementById('freezeBanner').style.display = 'none';
+      hideDirectOverlay();
+    }
+  }
+
+  // ---- Export to video file ----
+  let exportChunks = [], exportMime = '', exportStoppedPromise = null;
+
+  function pickExportMime() {
+    const cands = ['video/mp4', 'video/webm;codecs=vp9', 'video/webm'];
+    for (const m of cands) {
+      try { if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m; } catch (e) {}
+    }
+    return '';
+  }
+
+  async function exportSession(id) {
+    const t = i18n[currentLang];
+    const s = sessions.find(x => x.id === id);
+    if (!s) { alert(t.alertNoSession); return; }
+    if (isRecording || isReplaying || isExporting) return;
+    const mime = pickExportMime();
+    if (!mime || !canvas.captureStream) { alert(t.alertExportNoSupport); return; }
+    await ensureSessionVideo(s);
+
+    isExporting = true;
+    exportCancelled = false;
+    exportingSession = s;
+    exportEventIdx = 0;
+    exportFreezeUntil = -1;
+    exportFreezeResults = null;
+    exportChunks = [];
+    exportMime = mime;
+    video.loop = false;
+    video.muted = true;
+    video.style.display = 'none';
+    syncCanvasSize();
+
+    const stream = canvas.captureStream(30);
+    try {
+      exportAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (exportAudioCtx.state === 'suspended') await exportAudioCtx.resume();
+      exportAudioEl = new Audio(s.audioUrl);
+      const srcNode = exportAudioCtx.createMediaElementSource(exportAudioEl);
+      const destNode = exportAudioCtx.createMediaStreamDestination();
+      srcNode.connect(destNode);
+      destNode.stream.getAudioTracks().forEach(tr => stream.addTrack(tr));
+    } catch (e) { console.error('export audio graph failed', e); }
+
+    exportMediaRecorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8000000 });
+    exportMediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size) exportChunks.push(e.data); };
+    exportStoppedPromise = new Promise((res) => { exportMediaRecorder.onstop = () => res(); });
+
+    showDirectOverlay('export');
+    exportMediaRecorder.start();
+    try { await exportAudioEl.play(); } catch (e) {}
+    exportAudioEl.onended = () => { setTimeout(() => finishExportRender(), 400); };
+    exportRaf = requestAnimationFrame(exportTick);
+  }
+
+  function exportTick() {
+    if (!isExporting || !exportAudioEl) return;
+    const s = exportingSession;
+    const tA = exportAudioEl.currentTime;
+    while (exportEventIdx < s.events.length && s.events[exportEventIdx].t <= tA) {
+      applySessionEvent(s.events[exportEventIdx], 'export');
+      exportEventIdx++;
+    }
+    if (exportFreezeUntil > 0) {
+      if (tA < exportFreezeUntil) {
+        if (!video.paused) video.pause();
+      } else {
+        exportFreezeUntil = -1;
+        exportFreezeResults = null;
+      }
+    }
+    drawExportFrame();
+    updateDirectProgress(tA / (s.duration || 1));
+    exportRaf = requestAnimationFrame(exportTick);
+  }
+
+  function drawExportFrame() {
+    const stageW = stage.clientWidth, stageH = stage.clientHeight;
+    ctx.clearRect(0, 0, stageW, stageH);
+    if (video.videoWidth) {
+      const box = getMediaDisplayBox(video.videoWidth, video.videoHeight, stageW, stageH);
+      try { ctx.drawImage(video, box.rx, box.ry, box.rw, box.rh); } catch (e) {}
+    }
+    let overlay = null;
+    if (exportFreezeResults) {
+      overlay = exportFreezeResults;
+    } else if (video.paused && exportSession && exportingSession.poseCacheMap) {
+      const lm = exportingSession.poseCacheMap.get(r2(video.currentTime));
+      if (lm) overlay = { poseLandmarks: lm };
+    }
+    if (overlay) drawPoseFrame(overlay, false);
+  }
+
+  async function finishExportRender() {
+    if (!isExporting) return;
+    if (exportRaf) cancelAnimationFrame(exportRaf);
+    exportRaf = 0;
+    try { if (exportMediaRecorder && exportMediaRecorder.state !== 'inactive') exportMediaRecorder.stop(); } catch (e) {}
+    if (exportStoppedPromise) await exportStoppedPromise;
+    const chunks = exportChunks, mime = exportMime, s = exportingSession, cancelled = exportCancelled;
+    const t = i18n[currentLang];
+    cleanupExportState();
+    if (!cancelled && chunks.length > 0) {
+      const ext = mime.includes('mp4') ? 'mp4' : 'webm';
+      const blob = new Blob(chunks, { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const safeName = String(s.videoName || 'formbuddy').replace(/[^\w\-]+/g, '_').slice(0, 40);
+      a.href = url;
+      a.download = `FormBuddy-feedback-${safeName}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 4000);
+      alert(t.exportDone);
+    } else if (cancelled) {
+      alert(t.exportCancelled);
+    }
+  }
+
+  function cleanupExportState() {
+    isExporting = false;
+    exportingSession = null;
+    if (exportAudioEl) { try { exportAudioEl.pause(); } catch (e) {} exportAudioEl = null; }
+    if (exportAudioCtx) { try { exportAudioCtx.close(); } catch (e) {} exportAudioCtx = null; }
+    exportMediaRecorder = null;
+    exportChunks = [];
+    exportStoppedPromise = null;
+    video.style.display = 'block';
+    video.muted = false;
+    document.getElementById('freezeBanner').style.display = 'none';
+    hideDirectOverlay();
+    redrawCurrentFrame();
+  }
+
+  function cancelExportRender() {
+    if (!isExporting) return;
+    exportCancelled = true;
+    finishExportRender();
+  }
+
+  // ---- Direct overlay UI ----
+  function showDirectOverlay(mode) {
+    const ov = document.getElementById('directOverlay');
+    const dot = document.getElementById('directRecDot');
+    const t = i18n[currentLang];
+    ov.style.display = 'flex';
+    ov.classList.toggle('rec', mode === 'rec');
+    dot.style.display = mode === 'rec' ? 'inline-block' : 'none';
+    updateDirectProgress(0);
+    if (mode === 'rec') updateRecOverlay();
+    else document.getElementById('directOverlayText').innerText = mode === 'replay' ? t.replaying : t.exporting;
+  }
+  function updateRecOverlay() {
+    if (!isRecording) return;
+    document.getElementById('directOverlayText').innerText = `${i18n[currentLang].recOn} ${formatTime(recClock())}`;
+  }
+  function updateDirectProgress(frac) {
+    const f = Math.max(0, Math.min(1, frac || 0));
+    document.getElementById('directProgressFill').style.width = `${f * 100}%`;
+  }
+  function hideDirectOverlay() {
+    document.getElementById('directOverlay').style.display = 'none';
+  }
+  function stopDirectMode() {
+    if (isRecording) { toggleRecording(); return; }
+    if (isReplaying) { stopReplay(); return; }
+    if (isExporting) { cancelExportRender(); return; }
   }
 
   function renderPendingList() {
