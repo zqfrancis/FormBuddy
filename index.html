@@ -252,6 +252,25 @@
   .session-card .s-meta { font-size:0.78rem; color:var(--text-muted); margin-bottom:8px; }
   .session-card .s-btns { display:flex; gap:8px; flex-wrap:wrap; }
   .session-card .s-btns button { font-size:0.8rem; padding:6px 10px; }
+
+  /* ---- Feedback template chips (3a) ---- */
+  .tpl-group-label { font-size:0.78rem; font-weight:700; color:var(--text-muted); margin:10px 0 6px 0; }
+  .tpl-group-label:first-child { margin-top:0; }
+  .tpl-chip-row { display:flex; flex-wrap:wrap; gap:6px; }
+  .tpl-chip {
+    font-size:0.8rem; padding:7px 10px; border-radius:16px; cursor:pointer;
+    background:var(--bg-chip); border:1px solid #00b359; color:var(--text-main);
+  }
+  body:not(.light-theme) .tpl-chip { border-color:#00ff87; }
+  .tpl-chip:active { opacity:0.75; }
+  .tpl-chip:disabled { opacity:0.45; cursor:not-allowed; border-color:var(--border-input); }
+  #noteToast {
+    position:fixed; left:50%; transform:translateX(-50%); bottom:70px; z-index:60;
+    background:rgba(10,10,10,0.92); color:#fff; border:1px solid #00ff87; border-radius:18px;
+    padding:8px 16px; font-size:0.85rem; font-weight:600; display:none; max-width:92vw;
+    box-shadow:0 4px 16px rgba(0,0,0,0.5); pointer-events:none; text-align:center;
+  }
+  body.light-theme #noteToast { background:rgba(255,255,255,0.96); color:#111; }
   #directOverlay {
     position: fixed; left:50%; transform:translateX(-50%); bottom:14px; z-index:50;
     background: rgba(10,10,10,0.92); color:#fff; border:1px solid #00ff87; border-radius:24px;
@@ -398,6 +417,12 @@
       <div id="sessionList" style="display:flex; flex-direction:column; gap:8px; font-size:0.83rem; color:var(--text-muted);"></div>
     </div>
 
+    <div id="templateSection" class="panel-section" style="display:none;">
+      <h3 id="titleTemplates">💬 Feedback Templates</h3>
+      <div id="templateHint" style="font-size:0.78rem; color:var(--text-muted); margin-bottom:8px;"></div>
+      <div id="templateChips"></div>
+    </div>
+
     <div id="secLayerSettings" class="panel-section" style="display:none;">
       <h3 id="titleLayerSettings">⚙️ AI Layer Settings</h3>
       <label style="display:block; margin-bottom:10px;"><input type="checkbox" id="showSkeleton" checked onchange="redrawCurrentFrame()" /> <span id="lblShowSkeleton">Skeleton Line (No Head)</span></label>
@@ -418,6 +443,7 @@
   </div>
 </div>
 
+<div id="noteToast"></div>
 <div id="directOverlay">
   <span class="rec-dot" id="directRecDot" style="display:none;"></span>
   <span id="directOverlayText"></span>
@@ -513,7 +539,16 @@
       exportCancelled: "已取消导出",
       alertNoSession: "没有可回放的录制。",
       alertExportNoSupport: "当前浏览器不支持视频导出。",
-      sessionMeta: "个事件"
+      sessionMeta: "个事件",
+      titleTemplates: "💬 点评模板",
+      templateHint: "导播录制中点任意模板，即插入带视频时间戳的点评 note。",
+      templateNeedRec: "先点“🎙️ 录制语音点评”开始录制，才能插入模板",
+      gStance: "站姿",
+      gFootwork: "步法",
+      gPunch: "拳法",
+      gKick: "踢法",
+      gDefense: "防守",
+      noteInserted: "✅ 已插入点评"
     },
     en: {
       headerSubTitle: "(Motion Analysis)",
@@ -589,7 +624,16 @@
       exportCancelled: "Export cancelled",
       alertNoSession: "No session to play.",
       alertExportNoSupport: "Video export is not supported in this browser.",
-      sessionMeta: "events"
+      sessionMeta: "events",
+      titleTemplates: "💬 Feedback Templates",
+      templateHint: "Tap a template during directed recording to insert a timestamped note.",
+      templateNeedRec: "Start recording first to insert a template",
+      gStance: "Stance",
+      gFootwork: "Footwork",
+      gPunch: "Punches",
+      gKick: "Kicks",
+      gDefense: "Defense",
+      noteInserted: "✅ Note added"
     }
   };
 
@@ -618,6 +662,21 @@
   let exportFreezeUntil = -1, exportFreezeResults = null, exportCancelled = false;
   let exportMediaRecorder = null, exportAudioCtx = null;
   const r2 = (n) => Math.round(n * 100) / 100;
+  // ---- Feedback template library (3a): bilingual karate feedback templates, grouped ----
+  const NOTE_TEMPLATES = [
+    { g: 'gStance',   zh: '站姿再低一点，稳住重心', en: 'Lower your stance, stay stable' },
+    { g: 'gStance',   zh: '后脚随身体转正',         en: 'Pivot the rear foot with your body' },
+    { g: 'gFootwork', zh: '移动时后脚先行',         en: 'Rear foot leads when moving' },
+    { g: 'gFootwork', zh: '步幅再大一点',           en: 'Widen your steps a bit more' },
+    { g: 'gPunch',    zh: '出拳拧腰发力',           en: 'Twist the hips into the punch' },
+    { g: 'gPunch',    zh: '收拳要快，护住下巴',     en: 'Snap back fast, chin covered' },
+    { g: 'gKick',     zh: '支撑腿膝盖微屈',         en: 'Slight bend in the support knee' },
+    { g: 'gKick',     zh: '踢出后快速收腿',         en: 'Quick recoil after the kick' },
+    { g: 'gDefense',  zh: '防守手抬高护头',         en: 'Guard up, protect your head' },
+    { g: 'gDefense',  zh: '别后仰，迎上去',         en: "Don't lean back — step in" }
+  ];
+  const NOTE_GROUP_ORDER = ['gStance', 'gFootwork', 'gPunch', 'gKick', 'gDefense'];
+  let noteToastTimer = null;
   let lastAngles = { rightKnee: 168, leftKnee: 172, guardElbow: 78 };
   let isSeeking = false;
 
@@ -769,6 +828,7 @@
     renderSidebarCards();
     initDragEvents();
     renderPendingList();
+    renderTemplateChips();
     loadSessions();
   });
 
@@ -1362,6 +1422,48 @@
     `).join('');
   }
 
+  function showNoteToast(text) {
+    const el = document.getElementById('noteToast');
+    if (!el) return;
+    el.innerText = text;
+    el.style.display = 'block';
+    if (noteToastTimer) clearTimeout(noteToastTimer);
+    noteToastTimer = setTimeout(() => { el.style.display = 'none'; }, 2000);
+  }
+
+  function renderTemplateChips() {
+    const box = document.getElementById('templateChips');
+    const hint = document.getElementById('templateHint');
+    if (!box || !hint) return;
+    const t = i18n[currentLang];
+    hint.innerText = t.templateHint;
+    const active = isRecording && recSession;
+    box.innerHTML = NOTE_GROUP_ORDER.map(gk => {
+      const items = NOTE_TEMPLATES.map((tpl, i) => ({ tpl, i })).filter(x => x.tpl.g === gk);
+      if (!items.length) return '';
+      return `<div class="tpl-group-label">${t[gk] || gk}</div>
+      <div class="tpl-chip-row">${items.map(x =>
+        `<button class="tpl-chip" ${active ? '' : 'disabled title="' + escapeHtml(t.templateNeedRec) + '"'}
+          onclick="insertTemplateNote(${x.i})">${escapeHtml(x.tpl[currentLang] || x.tpl.en)}</button>`
+      ).join('')}</div>`;
+    }).join('');
+  }
+
+  function insertTemplateNote(idx) {
+    const tpl = NOTE_TEMPLATES[idx];
+    if (!tpl || !isRecording || !recSession) return;
+    const vt = r2(video.currentTime);
+    logRecEvent({
+      type: 'note',
+      videoTime: vt,
+      group: tpl.g,
+      zh: tpl.zh,
+      en: tpl.en
+    });
+    const t = i18n[currentLang];
+    showNoteToast(`${t.noteInserted} @ ${formatTime(vt)} · ${tpl[currentLang] || tpl.en}`);
+  }
+
   function updateStatus(statusKey) {
     currentStatusKey = statusKey;
     document.getElementById('statusBadge').innerText = i18n[currentLang][statusKey];
@@ -1420,6 +1522,7 @@
     redrawCurrentFrame();
     renderTimelinePoints();
     renderSidebarCards();
+    renderTemplateChips();
     renderPendingList();
   }
 
@@ -1433,6 +1536,7 @@
     document.getElementById('btnCapture').style.display = isCoach ? 'inline-block' : 'none';
     document.getElementById('freezeHoldWrap').style.display = isCoach ? 'inline-flex' : 'none';
     document.getElementById('sessionSection').style.display = isCoach ? 'block' : 'none';
+    document.getElementById('templateSection').style.display = isCoach ? 'block' : 'none';
     document.getElementById('coachRecordBtn').style.display = isCoach ? 'inline-block' : 'none';
     document.getElementById('timeline-points').style.display = isCoach ? 'block' : 'none';
 
@@ -1441,6 +1545,7 @@
     document.getElementById('secSystemStatus').style.display = isCoach ? 'block' : 'none';
 
     updateStatus(isCoach ? 'statusCoachView' : 'statusStudentView');
+    renderTemplateChips();
     redrawCurrentFrame();
   }
 
@@ -1484,6 +1589,7 @@
         mediaRecorder.start();
         btn.innerText = t.btnRecordStop;
         showDirectOverlay('rec');
+        renderTemplateChips();
         recTickTimer = setInterval(updateRecOverlay, 500);
         updateStatus('statusRecording');
       } catch (err) {
@@ -1498,6 +1604,7 @@
       btn.innerText = t.btnRecordStart;
       if (recTickTimer) { clearInterval(recTickTimer); recTickTimer = null; }
       hideDirectOverlay();
+      renderTemplateChips();
     }
   }
 
@@ -1695,6 +1802,9 @@
     } else if (ev.type === 'pause') {
       video.pause();
       if (mode === 'preview' && currentRole === 'Coach') triggerFrameAnalysis();
+    } else if (ev.type === 'note') {
+      // 3a: template note event — show a transient toast in preview; 3b will add time-driven subtitle bars
+      if (mode === 'preview') showNoteToast(ev[currentLang] || ev.en || ev.zh || '');
     } else if (ev.type === 'freeze') {
       video.pause();
       video.currentTime = ev.videoTime;
