@@ -271,6 +271,15 @@
     box-shadow:0 4px 16px rgba(0,0,0,0.5); pointer-events:none; text-align:center;
   }
   body.light-theme #noteToast { background:rgba(255,255,255,0.96); color:#111; }
+  /* ---- Note subtitle bar (3b): timeline-driven, overlaid on the video ---- */
+  #noteSubtitle {
+    position:absolute; left:50%; transform:translateX(-50%); bottom:12px; z-index:5;
+    background:rgba(0,0,0,0.72); color:#fff; border:1px solid rgba(255,255,255,0.35);
+    border-radius:10px; padding:8px 16px; font-size:1rem; font-weight:600;
+    display:none; max-width:90%; text-align:center; line-height:1.4; pointer-events:none;
+    box-shadow:0 2px 12px rgba(0,0,0,0.45); white-space:pre-wrap;
+  }
+  body.light-theme #noteSubtitle { background:rgba(255,255,255,0.92); color:#111; border-color:rgba(0,0,0,0.25); }
   #directOverlay {
     position: fixed; left:50%; transform:translateX(-50%); bottom:14px; z-index:50;
     background: rgba(10,10,10,0.92); color:#fff; border:1px solid #00ff87; border-radius:24px;
@@ -350,6 +359,7 @@
     <div class="video-wrapper" id="stage">
       <video id="videoPlayer" crossorigin="anonymous" loop playsinline webkit-playsinline style="display:none;"></video>
       <canvas id="overlayCanvas"></canvas>
+      <div id="noteSubtitle"></div>
     </div>
 
     <div id="controls">
@@ -676,6 +686,10 @@
     { g: 'gDefense',  zh: '别后仰，迎上去',         en: "Don't lean back — step in" }
   ];
   const NOTE_GROUP_ORDER = ['gStance', 'gFootwork', 'gPunch', 'gKick', 'gDefense'];
+  // 3b: how long a note stays on screen as a subtitle bar (audio-clock seconds)
+  const NOTE_SUBTITLE_SECS = 3.5;
+  let activeNoteEv = null, activeNoteUntil = -1; // preview subtitle state (audio clock)
+  let exportNoteEv = null, exportNoteUntil = -1; // export subtitle state (audio clock)
   let noteToastTimer = null;
   let lastAngles = { rightKnee: 168, leftKnee: 172, guardElbow: 78 };
   let isSeeking = false;
@@ -1431,6 +1445,56 @@
     noteToastTimer = setTimeout(() => { el.style.display = 'none'; }, 2000);
   }
 
+  // ---- Note subtitle bars (3b): timeline-driven show/hide ----
+  function noteText(ev) { return (ev && (ev[currentLang] || ev.en || ev.zh)) || ''; }
+  function hideNoteSubtitle() {
+    activeNoteEv = null; activeNoteUntil = -1;
+    const el = document.getElementById('noteSubtitle');
+    if (el) el.style.display = 'none';
+  }
+  function updateNoteSubtitle(tA) {
+    const el = document.getElementById('noteSubtitle');
+    if (!el) return;
+    if (activeNoteEv && tA < activeNoteUntil) {
+      el.innerText = noteText(activeNoteEv);
+      el.style.display = 'block';
+    } else {
+      hideNoteSubtitle();
+    }
+  }
+  // Draw the active note as a burned-in subtitle bar on the export canvas
+  function drawExportSubtitle() {
+    if (!exportNoteEv || !exportAudioEl) return;
+    const tA = exportAudioEl.currentTime;
+    if (tA >= exportNoteUntil) { exportNoteEv = null; exportNoteUntil = -1; return; }
+    const text = noteText(exportNoteEv);
+    if (!text) return;
+    const W = stage.clientWidth, H = stage.clientHeight;
+    const fontSize = Math.max(18, Math.round(H * 0.045));
+    ctx.font = `600 ${fontSize}px system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const maxW = W * 0.86;
+    // simple word wrap (char-based, CJK-safe)
+    const lines = [];
+    let cur = '';
+    for (const ch of text) {
+      const trial = cur + ch;
+      if (ctx.measureText(trial).width > maxW && cur) { lines.push(cur); cur = ch; }
+      else cur = trial;
+    }
+    if (cur) lines.push(cur);
+    const lineH = fontSize * 1.45;
+    const padX = 18, padY = 10;
+    const boxW = Math.min(W * 0.92, Math.max(...lines.map(l => ctx.measureText(l).width)) + padX * 2);
+    const boxH = lines.length * lineH + padY * 2;
+    const x = (W - boxW) / 2, y = H - boxH - 14;
+    ctx.fillStyle = 'rgba(0,0,0,0.72)';
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y, boxW, boxH, 10); else ctx.rect(x, y, boxW, boxH);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    lines.forEach((l, i) => ctx.fillText(l, W / 2, y + padY + lineH * (i + 0.5)));
+  }
   function renderTemplateChips() {
     const box = document.getElementById('templateChips');
     const hint = document.getElementById('templateHint');
@@ -1525,6 +1589,9 @@
     renderSidebarCards();
     renderTemplateChips();
     renderPendingList();
+    // 3b: re-render the visible subtitle in the new language
+    const ns = document.getElementById('noteSubtitle');
+    if (ns && activeNoteEv) ns.innerText = noteText(activeNoteEv);
   }
 
   function switchRole(role) {
@@ -1769,6 +1836,7 @@
     replayEventIdx = 0;
     replayFreezeUntil = -1;
     replayFreezeResults = null;
+    hideNoteSubtitle();
     video.loop = false;
     video.muted = true;
     showDirectOverlay('replay');
@@ -1788,9 +1856,11 @@
       if (mode === 'preview') {
         document.getElementById('freezeBanner').style.display = 'none';
         replayFreezeUntil = -1; replayFreezeResults = null;
+        hideNoteSubtitle();
         if (currentRole === 'Coach') triggerFrameAnalysis();
       } else {
         exportFreezeUntil = -1; exportFreezeResults = null;
+        exportNoteEv = null; exportNoteUntil = -1;
       }
     } else if (ev.type === 'play') {
       if (mode === 'preview') {
@@ -1804,8 +1874,9 @@
       video.pause();
       if (mode === 'preview' && currentRole === 'Coach') triggerFrameAnalysis();
     } else if (ev.type === 'note') {
-      // 3a: template note event — show a transient toast in preview; 3b will add time-driven subtitle bars
-      if (mode === 'preview') showNoteToast(ev[currentLang] || ev.en || ev.zh || '');
+      // 3b: note event — timeline-driven subtitle bar (preview) / burned-in subtitle (export)
+      if (mode === 'preview') { activeNoteEv = ev; activeNoteUntil = tA + NOTE_SUBTITLE_SECS; }
+      else { exportNoteEv = ev; exportNoteUntil = tA + NOTE_SUBTITLE_SECS; }
     } else if (ev.type === 'freeze') {
       video.pause();
       video.currentTime = ev.videoTime;
@@ -1842,6 +1913,7 @@
         document.getElementById('freezeBanner').style.display = 'none';
       }
     }
+    updateNoteSubtitle(tA);
     updateDirectProgress(tA / (s.duration || 1));
     replayRaf = requestAnimationFrame(replayTick);
   }
@@ -1856,6 +1928,7 @@
       video.pause();
       video.muted = false;
       document.getElementById('freezeBanner').style.display = 'none';
+      hideNoteSubtitle();
       hideDirectOverlay();
     }
   }
@@ -1886,6 +1959,7 @@
     exportEventIdx = 0;
     exportFreezeUntil = -1;
     exportFreezeResults = null;
+    exportNoteEv = null; exportNoteUntil = -1;
     exportChunks = [];
     exportMime = mime;
     video.loop = false;
@@ -1951,6 +2025,7 @@
       if (lm) overlay = { poseLandmarks: lm };
     }
     if (overlay) drawPoseFrame(overlay, false);
+    drawExportSubtitle();
   }
 
   async function finishExportRender() {
@@ -1987,6 +2062,7 @@
     exportMediaRecorder = null;
     exportChunks = [];
     exportStoppedPromise = null;
+    exportNoteEv = null; exportNoteUntil = -1;
     video.style.display = 'block';
     video.muted = false;
     document.getElementById('freezeBanner').style.display = 'none';
