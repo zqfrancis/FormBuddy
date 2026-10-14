@@ -582,7 +582,7 @@
       alertExportNoSupport: "当前浏览器不支持视频导出。",
       sessionMeta: "个事件",
       titleTemplates: "💬 点评模板",
-      templateHint: "导播录制中点任意模板，即插入带视频时间戳的点评 note。",
+      templateHint: "导播录制中点任意模板，即插入带视频时间戳的点评便签。",
       templateNeedRec: "先点“🎙️ 录制语音点评”开始录制，才能插入模板",
       gStance: "站姿",
       gFootwork: "步法",
@@ -603,7 +603,8 @@
       tplNeedBoth: "中英文都要填哦",
       tplAdded: "✅ 已添加自定义模板",
       tplUpdated: "✅ 自定义模板已更新",
-      confirmDeleteTpl: "确定删除这条自定义模板吗？" 
+      tplDelConfirm: "确定删除这条模板？",
+      tplDelYes: "确认删除" 
     },
     en: {
       headerSubTitle: "(Motion Analysis)",
@@ -702,7 +703,8 @@
       tplNeedBoth: "Please fill in both Chinese and English",
       tplAdded: "✅ Custom template added",
       tplUpdated: "✅ Custom template updated",
-      confirmDeleteTpl: "Delete this custom template?"
+      tplDelConfirm: "Delete this template?",
+      tplDelYes: "Delete"
     }
   };
 
@@ -1594,6 +1596,7 @@
   const CUSTOM_TPL_KEY = 'formbuddy_custom_templates_v1';
   let customTemplates = [];
   let editingTplId = null;
+  let deletingTplId = null;
 
   function loadCustomTemplates() {
     customTemplates = [];
@@ -1651,6 +1654,7 @@
     document.getElementById('tplNewEn').value = c.en;
     document.getElementById('tplNewGroup').value = c.g;
     editingTplId = id;
+    deletingTplId = null;
     renderCustomTplUi();
     document.getElementById('tplNewZh').focus();
   }
@@ -1663,12 +1667,18 @@
   }
 
   function deleteCustomTemplate(id) {
-    const t = i18n[currentLang];
-    if (!confirm(t.confirmDeleteTpl)) return;
+    // Two-tap in-page confirm: first tap arms, second tap deletes (no blocking dialogs).
+    if (deletingTplId !== id) { deletingTplId = id; renderCustomTplUi(); return; }
+    deletingTplId = null;
     customTemplates = customTemplates.filter(x => x.id !== id);
-    if (editingTplId === id) cancelTplEdit();
+    if (editingTplId === id) { editingTplId = null; document.getElementById('tplNewZh').value = ''; document.getElementById('tplNewEn').value = ''; }
     saveCustomTemplates();
     renderTemplateChips();
+    renderCustomTplUi();
+  }
+
+  function cancelTplDelete() {
+    deletingTplId = null;
     renderCustomTplUi();
   }
 
@@ -1701,14 +1711,19 @@
       if (!customTemplates.length) {
         list.innerHTML = `<div style="font-size:0.78rem; color:var(--text-muted);">${t.tplEmpty}</div>`;
       } else {
-        list.innerHTML = customTemplates.map(c =>
-          `<div class="tpl-custom-row">
+        list.innerHTML = customTemplates.map(c => {
+          const arming = deletingTplId === c.id;
+          return `<div class="tpl-custom-row">
             <span class="tpl-custom-text">${escapeHtml(c[currentLang] || c.en)}</span>
             <span class="tpl-custom-group">${escapeHtml(t[c.g] || c.g)}</span>
-            <button onclick="editCustomTemplate('${c.id}')">${t.tplEdit}</button>
-            <button onclick="deleteCustomTemplate('${c.id}')" style="color:#ff4757 !important;">${t.tplDel}</button>
-          </div>`
-        ).join('');
+            ${arming
+              ? `<span style="color:#ff4757; font-weight:700; font-size:0.75rem; flex-shrink:0;">${t.tplDelConfirm}</span>
+                 <button onclick="deleteCustomTemplate('${c.id}')" style="color:#ff4757 !important;">${t.tplDelYes}</button>
+                 <button onclick="cancelTplDelete()">${t.tplCancel}</button>`
+              : `<button onclick="editCustomTemplate('${c.id}')">${t.tplEdit}</button>
+                 <button onclick="deleteCustomTemplate('${c.id}')" style="color:#ff4757 !important;">${t.tplDel}</button>`}
+          </div>`;
+        }).join('');
       }
     }
   }
