@@ -264,6 +264,23 @@
   body:not(.light-theme) .tpl-chip { border-color:#00ff87; }
   .tpl-chip:active { opacity:0.75; }
   .tpl-chip:disabled { opacity:0.45; cursor:not-allowed; border-color:var(--border-input); }
+  /* ---- Custom templates (3c) ---- */
+  #tplManage { margin-top:14px; border-top:1px dashed var(--border-input); padding-top:10px; }
+  #tplManage h4 { margin:0 0 6px 0; font-size:0.85rem; color:var(--text-main); }
+  #tplCustomHint { font-size:0.75rem; color:var(--text-muted); margin-bottom:8px; }
+  .tpl-custom-row {
+    display:flex; align-items:center; gap:8px; font-size:0.8rem;
+    background:var(--bg-chip); border:1px solid var(--border-input); border-radius:6px;
+    padding:6px 8px; margin-bottom:6px;
+  }
+  .tpl-custom-row .tpl-custom-text { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tpl-custom-row .tpl-custom-group { color:var(--text-muted); font-size:0.72rem; flex-shrink:0; }
+  .tpl-custom-row button { font-size:0.75rem; padding:5px 8px; flex-shrink:0; }
+  #tplAddForm { display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+  #tplAddForm input { width:100%; }
+  #tplAddForm .tpl-form-row { display:flex; gap:6px; }
+  #tplAddForm .tpl-form-row select { flex:1; }
+  #tplAddForm .tpl-form-row button { flex:0 0 auto; }
   #noteToast {
     position:fixed; left:50%; transform:translateX(-50%); bottom:70px; z-index:60;
     background:rgba(10,10,10,0.92); color:#fff; border:1px solid #00ff87; border-radius:18px;
@@ -431,6 +448,20 @@
       <h3 id="titleTemplates">💬 Feedback Templates</h3>
       <div id="templateHint" style="font-size:0.78rem; color:var(--text-muted); margin-bottom:8px;"></div>
       <div id="templateChips"></div>
+      <div id="tplManage">
+        <h4 id="titleCustomTpl">🛠️ Custom Templates</h4>
+        <div id="tplCustomHint"></div>
+        <div id="tplCustomList"></div>
+        <div id="tplAddForm">
+          <input type="text" id="tplNewZh" maxlength="60" />
+          <input type="text" id="tplNewEn" maxlength="60" />
+          <div class="tpl-form-row">
+            <select id="tplNewGroup"></select>
+            <button id="tplAddBtn" onclick="addOrSaveCustomTemplate()">➕</button>
+            <button id="tplCancelEditBtn" style="display:none;" onclick="cancelTplEdit()">✕</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div id="secLayerSettings" class="panel-section" style="display:none;">
@@ -558,7 +589,21 @@
       gPunch: "拳法",
       gKick: "踢法",
       gDefense: "防守",
-      noteInserted: "✅ 已插入点评"
+      noteInserted: "✅ 已插入点评",
+      titleCustomTpl: "🛠️ 自定义模板",
+      tplCustomHint: "保存在本机浏览器，录制时同样一键插入。",
+      tplZhPh: "中文点评（如：出拳转腰再快一点）",
+      tplEnPh: "英文点评 (e.g. Rotate hips faster on punches)",
+      tplAdd: "➕ 添加",
+      tplSave: "💾 保存",
+      tplCancel: "取消",
+      tplEdit: "编辑",
+      tplDel: "删除",
+      tplEmpty: "暂无自定义模板，在下方添加第一条。",
+      tplNeedBoth: "中英文都要填哦",
+      tplAdded: "✅ 已添加自定义模板",
+      tplUpdated: "✅ 自定义模板已更新",
+      confirmDeleteTpl: "确定删除这条自定义模板吗？" 
     },
     en: {
       headerSubTitle: "(Motion Analysis)",
@@ -643,7 +688,21 @@
       gPunch: "Punches",
       gKick: "Kicks",
       gDefense: "Defense",
-      noteInserted: "✅ Note added"
+      noteInserted: "✅ Note added",
+      titleCustomTpl: "🛠️ Custom Templates",
+      tplCustomHint: "Saved in this browser; also one-tap insertable during recording.",
+      tplZhPh: "Chinese text (e.g. 出拳转腰再快一点)",
+      tplEnPh: "English feedback (e.g. Rotate hips faster on punches)",
+      tplAdd: "➕ Add",
+      tplSave: "💾 Save",
+      tplCancel: "Cancel",
+      tplEdit: "Edit",
+      tplDel: "Delete",
+      tplEmpty: "No custom templates yet — add your first below.",
+      tplNeedBoth: "Please fill in both Chinese and English",
+      tplAdded: "✅ Custom template added",
+      tplUpdated: "✅ Custom template updated",
+      confirmDeleteTpl: "Delete this custom template?"
     }
   };
 
@@ -842,7 +901,9 @@
     renderSidebarCards();
     initDragEvents();
     renderPendingList();
+    loadCustomTemplates();
     renderTemplateChips();
+    renderCustomTplUi();
     loadSessions();
   });
 
@@ -1502,19 +1563,20 @@
     const t = i18n[currentLang];
     hint.innerText = t.templateHint;
     const active = isRecording && recSession;
+    const tplList = allTemplates();
     box.innerHTML = NOTE_GROUP_ORDER.map(gk => {
-      const items = NOTE_TEMPLATES.map((tpl, i) => ({ tpl, i })).filter(x => x.tpl.g === gk);
+      const items = tplList.filter(x => x.g === gk);
       if (!items.length) return '';
       return `<div class="tpl-group-label">${t[gk] || gk}</div>
       <div class="tpl-chip-row">${items.map(x =>
         `<button class="tpl-chip" ${active ? '' : 'disabled title="' + escapeHtml(t.templateNeedRec) + '"'}
-          onclick="insertTemplateNote(${x.i})">${escapeHtml(x.tpl[currentLang] || x.tpl.en)}</button>`
+          onclick="insertTemplateNote('${x._id}')">${escapeHtml(x[currentLang] || x.en)}</button>`
       ).join('')}</div>`;
     }).join('');
   }
 
-  function insertTemplateNote(idx) {
-    const tpl = NOTE_TEMPLATES[idx];
+  function insertTemplateNote(id) {
+    const tpl = findTemplate(id);
     if (!tpl || !isRecording || !recSession) return;
     const vt = r2(video.currentTime);
     logRecEvent({
@@ -1526,6 +1588,129 @@
     });
     const t = i18n[currentLang];
     showNoteToast(`${t.noteInserted} @ ${formatTime(vt)} · ${tpl[currentLang] || tpl.en}`);
+  }
+
+  // ---- Custom templates (3c): user add/edit/delete, persisted in localStorage ----
+  const CUSTOM_TPL_KEY = 'formbuddy_custom_templates_v1';
+  let customTemplates = [];
+  let editingTplId = null;
+
+  function loadCustomTemplates() {
+    customTemplates = [];
+    try {
+      const raw = localStorage.getItem(CUSTOM_TPL_KEY);
+      if (!raw) return;
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return;
+      customTemplates = arr.filter(c => c && typeof c.id === 'string' && typeof c.zh === 'string'
+        && typeof c.en === 'string' && typeof c.g === 'string' && NOTE_GROUP_ORDER.includes(c.g));
+    } catch (e) {
+      customTemplates = [];
+    }
+  }
+  function saveCustomTemplates() {
+    try { localStorage.setItem(CUSTOM_TPL_KEY, JSON.stringify(customTemplates)); }
+    catch (e) { console.error('saveCustomTemplates failed', e); }
+  }
+  // Built-ins (immutable) + user customs, in chip-render order
+  function allTemplates() {
+    const built = NOTE_TEMPLATES.map((t, i) => ({ ...t, _id: 'b' + i, _builtin: true }));
+    const custom = customTemplates.map(c => ({ ...c, _id: c.id, _builtin: false }));
+    return built.concat(custom);
+  }
+  function findTemplate(id) { return allTemplates().find(x => x._id === id); }
+
+  function addOrSaveCustomTemplate() {
+    const t = i18n[currentLang];
+    const zhInput = document.getElementById('tplNewZh');
+    const enInput = document.getElementById('tplNewEn');
+    const grp = document.getElementById('tplNewGroup');
+    if (!zhInput || !enInput || !grp) return;
+    const zh = zhInput.value.trim(), en = enInput.value.trim();
+    if (!zh || !en) { showNoteToast(t.tplNeedBoth); return; }
+    const g = NOTE_GROUP_ORDER.includes(grp.value) ? grp.value : 'gKick';
+    if (editingTplId) {
+      const c = customTemplates.find(x => x.id === editingTplId);
+      if (c) { c.zh = zh; c.en = en; c.g = g; }
+      editingTplId = null;
+      showNoteToast(t.tplUpdated);
+    } else {
+      customTemplates.push({ id: 'c' + Date.now(), zh, en, g });
+      showNoteToast(t.tplAdded);
+    }
+    saveCustomTemplates();
+    zhInput.value = ''; enInput.value = '';
+    renderTemplateChips();
+    renderCustomTplUi();
+  }
+
+  function editCustomTemplate(id) {
+    const c = customTemplates.find(x => x.id === id);
+    if (!c) return;
+    document.getElementById('tplNewZh').value = c.zh;
+    document.getElementById('tplNewEn').value = c.en;
+    document.getElementById('tplNewGroup').value = c.g;
+    editingTplId = id;
+    renderCustomTplUi();
+    document.getElementById('tplNewZh').focus();
+  }
+
+  function cancelTplEdit() {
+    editingTplId = null;
+    document.getElementById('tplNewZh').value = '';
+    document.getElementById('tplNewEn').value = '';
+    renderCustomTplUi();
+  }
+
+  function deleteCustomTemplate(id) {
+    const t = i18n[currentLang];
+    if (!confirm(t.confirmDeleteTpl)) return;
+    customTemplates = customTemplates.filter(x => x.id !== id);
+    if (editingTplId === id) cancelTplEdit();
+    saveCustomTemplates();
+    renderTemplateChips();
+    renderCustomTplUi();
+  }
+
+  function renderCustomTplUi() {
+    const t = i18n[currentLang];
+    const titleEl = document.getElementById('titleCustomTpl');
+    if (titleEl) titleEl.innerText = t.titleCustomTpl;
+    const hintEl = document.getElementById('tplCustomHint');
+    if (hintEl) hintEl.innerText = t.tplCustomHint;
+    const zhInput = document.getElementById('tplNewZh');
+    if (zhInput) zhInput.placeholder = t.tplZhPh;
+    const enInput = document.getElementById('tplNewEn');
+    if (enInput) enInput.placeholder = t.tplEnPh;
+    const grp = document.getElementById('tplNewGroup');
+    if (grp) {
+      const cur = grp.value;
+      grp.innerHTML = NOTE_GROUP_ORDER.map(g => `<option value="${g}">${escapeHtml(t[g] || g)}</option>`).join('');
+      if (NOTE_GROUP_ORDER.includes(cur)) grp.value = cur;
+    }
+    const addBtn = document.getElementById('tplAddBtn');
+    if (addBtn) addBtn.innerText = editingTplId ? t.tplSave : t.tplAdd;
+    const cancelBtn = document.getElementById('tplCancelEditBtn');
+    if (cancelBtn) {
+      cancelBtn.style.display = editingTplId ? '' : 'none';
+      cancelBtn.innerText = t.tplCancel;
+      cancelBtn.title = t.tplCancel;
+    }
+    const list = document.getElementById('tplCustomList');
+    if (list) {
+      if (!customTemplates.length) {
+        list.innerHTML = `<div style="font-size:0.78rem; color:var(--text-muted);">${t.tplEmpty}</div>`;
+      } else {
+        list.innerHTML = customTemplates.map(c =>
+          `<div class="tpl-custom-row">
+            <span class="tpl-custom-text">${escapeHtml(c[currentLang] || c.en)}</span>
+            <span class="tpl-custom-group">${escapeHtml(t[c.g] || c.g)}</span>
+            <button onclick="editCustomTemplate('${c.id}')">${t.tplEdit}</button>
+            <button onclick="deleteCustomTemplate('${c.id}')" style="color:#ff4757 !important;">${t.tplDel}</button>
+          </div>`
+        ).join('');
+      }
+    }
   }
 
   function updateStatus(statusKey) {
@@ -1588,6 +1773,7 @@
     renderTimelinePoints();
     renderSidebarCards();
     renderTemplateChips();
+    renderCustomTplUi();
     renderPendingList();
     // 3b: re-render the visible subtitle in the new language
     const ns = document.getElementById('noteSubtitle');
