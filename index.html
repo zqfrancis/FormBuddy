@@ -310,7 +310,34 @@
   #directOverlay .rec-dot { width:10px; height:10px; border-radius:50%; background:#ff4757; animation: blink 1s infinite; }
   @keyframes blink { 50% { opacity:0.25; } }
   #directStopBtn { background:#ff4757 !important; border:none !important; color:#fff !important; border-radius:16px; padding:6px 12px !important; }
-
+  /* ---- Report view (4a): paper-style training report ---- */
+  #reportOverlay {
+    position:fixed; inset:0; z-index:70; overflow-y:auto;
+    background:rgba(0,0,0,0.55); padding:24px 12px;
+  }
+  .report-page {
+    max-width:720px; margin:0 auto; background:#ffffff; color:#111;
+    border-radius:10px; padding:24px 22px; box-shadow:0 8px 32px rgba(0,0,0,0.4);
+    font-size:0.92rem; line-height:1.55;
+  }
+  .report-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; border-bottom:2px solid #00b359; padding-bottom:10px; margin-bottom:14px; }
+  .report-head h2 { margin:0; font-size:1.25rem; }
+  .report-head h2 .en { display:block; font-size:0.85rem; color:#555; font-weight:400; }
+  .report-meta { display:grid; grid-template-columns:auto 1fr; gap:6px 12px; margin-bottom:16px; font-size:0.9rem; }
+  .report-meta .k { color:#555; white-space:nowrap; }
+  .report-meta input { border:1px solid #bbb; border-radius:6px; padding:6px 8px; font-size:0.9rem; width:100%; }
+  .report-page h3 { font-size:1.05rem; margin:18px 0 10px 0; color:#0a7a44; }
+  .report-page h3 .en { font-size:0.8rem; color:#666; font-weight:400; margin-left:6px; }
+  .report-snap { border:1px solid #ddd; border-radius:8px; padding:10px; margin-bottom:12px; page-break-inside:avoid; }
+  .report-snap img { width:100%; border-radius:6px; display:block; background:#000; }
+  .report-snap .cap { margin-top:8px; font-size:0.85rem; color:#333; }
+  .report-snap .cap .ang { color:#0a7a44; font-weight:700; }
+  .report-note { border-left:3px solid #00b359; background:#f5faf7; border-radius:0 6px 6px 0; padding:8px 10px; margin-bottom:8px; }
+  .report-note .nt { font-size:0.78rem; color:#777; margin-bottom:2px; }
+  .report-note .nen { color:#666; font-size:0.85rem; }
+  .report-empty { color:#888; font-size:0.88rem; padding:8px 0; }
+  .report-actions { display:flex; gap:10px; margin-top:18px; }
+  .report-actions button { font-size:0.9rem; padding:8px 16px; border-radius:8px; cursor:pointer; }
   @media (max-width: 768px) {
     header {
       flex-direction: column;
@@ -485,6 +512,11 @@
 </div>
 
 <div id="noteToast"></div>
+<div id="reportOverlay" style="display:none;">
+  <div class="report-page">
+    <div id="reportBody"></div>
+  </div>
+</div>
 <div id="directOverlay">
   <span class="rec-dot" id="directRecDot" style="display:none;"></span>
   <span id="directOverlayText"></span>
@@ -604,7 +636,30 @@
       tplAdded: "✅ 已添加自定义模板",
       tplUpdated: "✅ 自定义模板已更新",
       tplDelConfirm: "确定删除这条模板？",
-      tplDelYes: "确认删除" 
+      tplDelYes: "确认删除",
+      btnReport: "📄 报告",
+      reportTitle: "📄 训练报告",
+      reportTitleEn: "Training Report",
+      reportStudent: "学员姓名",
+      reportStudentEn: "Student name",
+      reportStudentPh: "输入学员姓名",
+      reportDate: "日期",
+      reportDateEn: "Date",
+      reportVideo: "视频",
+      reportVideoEn: "Video",
+      reportRecorded: "录制时间",
+      reportRecordedEn: "Recorded",
+      reportFreezes: "⏸️ 定格分析",
+      reportFreezesEn: "Freeze-frame Analysis",
+      reportNotes: "💬 点评便签",
+      reportNotesEn: "Feedback Notes",
+      reportNoFreezes: "本次录制没有定格分析点。",
+      reportNoNotes: "本次录制没有点评便签。",
+      reportClose: "✕ 关闭",
+      reportLoading: "正在生成报告，请稍候…",
+      reportAngleL: "左膝",
+      reportAngleR: "右膝",
+      reportAngleE: "手肘" 
     },
     en: {
       headerSubTitle: "(Motion Analysis)",
@@ -704,7 +759,30 @@
       tplAdded: "✅ Custom template added",
       tplUpdated: "✅ Custom template updated",
       tplDelConfirm: "Delete this template?",
-      tplDelYes: "Delete"
+      tplDelYes: "Delete",
+      btnReport: "📄 Report",
+      reportTitle: "📄 Training Report",
+      reportTitleEn: "训练报告",
+      reportStudent: "Student name",
+      reportStudentEn: "学员姓名",
+      reportStudentPh: "Enter student name",
+      reportDate: "Date",
+      reportDateEn: "日期",
+      reportVideo: "Video",
+      reportVideoEn: "视频",
+      reportRecorded: "Recorded",
+      reportRecordedEn: "录制时间",
+      reportFreezes: "⏸️ Freeze-frame Analysis",
+      reportFreezesEn: "定格分析",
+      reportNotes: "💬 Feedback Notes",
+      reportNotesEn: "点评便签",
+      reportNoFreezes: "No freeze frames in this session.",
+      reportNoNotes: "No feedback notes in this session.",
+      reportClose: "✕ Close",
+      reportLoading: "Generating report, please wait…",
+      reportAngleL: "Left knee",
+      reportAngleR: "Right knee",
+      reportAngleE: "Elbow"
     }
   };
 
@@ -1790,6 +1868,8 @@
     renderTemplateChips();
     renderCustomTplUi();
     renderPendingList();
+    // 4a: re-render open report in the new language (snapshots already cached)
+    if (reportCache) { saveReportStudentName(); renderReportHtml(); }
     // 3b: re-render the visible subtitle in the new language
     const ns = document.getElementById('noteSubtitle');
     if (ns && activeNoteEv) ns.innerText = noteText(activeNoteEv);
@@ -1992,6 +2072,7 @@
         <div class="s-btns">
           <button onclick="previewSession(${s.id})">${t.btnPreview}</button>
           <button onclick="exportSession(${s.id})">${t.btnExport}</button>
+          <button onclick="reportSession(${s.id})">${t.btnReport}</button>
           <button onclick="deleteSession(${s.id})" style="color:#ff4757 !important;">✕</button>
         </div>
       </div>`;
@@ -2004,6 +2085,187 @@
     try { await idbDel(id); } catch (e) {}
     sessions = sessions.filter(s => s.id !== id);
     renderSessionList();
+  }
+
+  // ---- Report view (4a): freeze snapshots + angles + notes + student/date ----
+  let reportCache = null; // { s, snaps: [{videoTime, dataUrl, angles}], notes, dateStr }
+
+  async function captureFreezeSnapshot(ev) {
+    // Seeks the main video to ev.videoTime and snapshots frame + skeleton.
+    // Returns { dataUrl, angles } or null when the video is unavailable.
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (!vw || !vh) return null;
+    video.pause();
+    const dur = video.duration || 1e9;
+    video.currentTime = Math.min(Math.max(ev.videoTime || 0, 0), Math.max(dur - 0.05, 0));
+    await new Promise(res => {
+      const to = setTimeout(res, 2000);
+      video.addEventListener('seeked', function h() { clearTimeout(to); res(); }, { once: true });
+    });
+    await new Promise(r => setTimeout(r, 60)); // let the frame paint
+    const W = 480, H = Math.round(480 * vh / vw);
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const c2 = c.getContext('2d');
+    c2.drawImage(video, 0, 0, W, H);
+    let angles = null;
+    if (ev.landmarks) {
+      try { angles = drawPoseSnapshot(c2, ev.landmarks, W, H); } catch (e) {}
+    }
+    if (!angles) angles = ev.angles || null;
+    return { dataUrl: c.toDataURL('image/jpeg', 0.85), angles: angles };
+  }
+
+  function drawSnapTag(c2, jx, jy, text, w, h) {
+    c2.font = "bold 14px -apple-system, BlinkMacSystemFont, sans-serif";
+    const tw = c2.measureText(text).width;
+    const bw = Math.max(tw + 18, 52), bh = 24;
+    const bx = Math.min(jx + 26, w - bw / 2 - 6);
+    const by = Math.max(jy - 34, bh / 2 + 6);
+    c2.beginPath(); c2.setLineDash([4, 4]);
+    c2.moveTo(jx, jy); c2.lineTo(bx, by);
+    c2.strokeStyle = "rgba(255,255,255,0.8)"; c2.lineWidth = 1.5; c2.stroke();
+    c2.setLineDash([]);
+    c2.fillStyle = "rgba(10,10,15,0.88)";
+    c2.beginPath();
+    if (c2.roundRect) c2.roundRect(bx - bw / 2, by - bh / 2, bw, bh, 5);
+    else c2.rect(bx - bw / 2, by - bh / 2, bw, bh);
+    c2.fill();
+    c2.strokeStyle = "#00ff87"; c2.lineWidth = 1.5; c2.stroke();
+    c2.fillStyle = "#fff"; c2.textAlign = "center"; c2.textBaseline = "middle";
+    c2.fillText(text, bx, by);
+  }
+
+  function drawPoseSnapshot(c2, landmarks, w, h) {
+    // Skeleton + joint-angle tags on an offscreen report canvas (frame already painted).
+    // Returns { leftKnee, rightKnee, guardElbow } recomputed from landmarks.
+    const mapped = landmarks.map(pt => ({ x: pt.x * w, y: pt.y * h, visibility: pt.visibility }));
+    c2.strokeStyle = '#00ff87'; c2.lineWidth = 3;
+    POSE_CONNECTIONS.forEach(([i, j]) => {
+      if (i >= 11 && j >= 11) {
+        const p1 = mapped[i], p2 = mapped[j];
+        if (p1 && p2 && p1.visibility > 0.5 && p2.visibility > 0.5) {
+          c2.beginPath(); c2.moveTo(p1.x, p1.y); c2.lineTo(p2.x, p2.y); c2.stroke();
+        }
+      }
+    });
+    mapped.forEach((p, idx) => {
+      if (idx >= 11 && p.visibility > 0.5) {
+        c2.fillStyle = '#ff0055'; c2.beginPath(); c2.arc(p.x, p.y, 4, 0, Math.PI * 2); c2.fill();
+        c2.strokeStyle = '#00ff87'; c2.lineWidth = 1.5; c2.stroke();
+      }
+    });
+    const angleOf = (a, b, c) => {
+      const p1 = mapped[a], p2 = mapped[b], p3 = mapped[c];
+      if (p1 && p2 && p3 && p1.visibility > 0.5 && p2.visibility > 0.5 && p3.visibility > 0.5)
+        return calculateAngle(p1, p2, p3);
+      return null;
+    };
+    const angles = { leftKnee: angleOf(23, 25, 27), rightKnee: angleOf(24, 26, 28), guardElbow: angleOf(12, 14, 16) };
+    const tags = [[25, 'leftKnee'], [26, 'rightKnee'], [14, 'guardElbow']];
+    tags.forEach(([bi, key]) => {
+      if (angles[key] == null || !mapped[bi]) return;
+      drawSnapTag(c2, mapped[bi].x, mapped[bi].y, angles[key] + '°', w, h);
+    });
+    return angles;
+  }
+
+  async function reportSession(id) {
+    const t = i18n[currentLang];
+    const s = sessions.find(x => x.id === id);
+    if (!s) { alert(t.alertNoSession); return; }
+    if (isRecording || isExporting || isReplaying) return;
+    document.getElementById('reportBody').innerHTML = `<div class="report-empty">${escapeHtml(t.reportLoading)}</div>`;
+    document.getElementById('reportOverlay').style.display = 'block';
+    reportCache = { s: s, snaps: [], notes: [], dateStr: new Date().toISOString().slice(0, 10) };
+    try { await ensureSessionVideo(s); } catch (e) {}
+    const freezes = (s.events || []).filter(ev => ev.type === 'freeze')
+      .sort((a, b) => (a.videoTime || 0) - (b.videoTime || 0));
+    for (const ev of freezes) {
+      let snap = null;
+      try { snap = await captureFreezeSnapshot(ev); } catch (e) {}
+      reportCache.snaps.push({
+        videoTime: ev.videoTime || 0,
+        dataUrl: snap && snap.dataUrl,
+        angles: (snap && snap.angles) || ev.angles || null
+      });
+      if (!reportCache || document.getElementById('reportOverlay').style.display !== 'block') return; // closed mid-way
+    }
+    reportCache.notes = (s.events || []).filter(ev => ev.type === 'note')
+      .sort((a, b) => (a.videoTime || 0) - (b.videoTime || 0));
+    renderReportHtml();
+  }
+
+  function closeReport() {
+    document.getElementById('reportOverlay').style.display = 'none';
+    reportCache = null;
+    video.pause();
+    updateSeekerUI();
+  }
+
+  function saveReportStudentName() {
+    if (!reportCache) return;
+    const inp = document.getElementById('reportStudentName');
+    if (!inp) return;
+    reportCache.s.studentName = inp.value.trim();
+    try { idbPut(reportCache.s); } catch (e) {}
+  }
+
+  function onReportDateChange(val) {
+    if (!reportCache) return;
+    saveReportStudentName();
+    reportCache.dateStr = val || new Date().toISOString().slice(0, 10);
+    renderReportHtml();
+  }
+
+  function renderReportHtml() {
+    const t = i18n[currentLang];
+    if (!reportCache) return;
+    const s = reportCache.s;
+    const d = new Date(s.createdAt);
+    const recStr = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const angleHtml = (angles) => {
+      if (!angles) return '';
+      const parts = [];
+      if (angles.leftKnee != null) parts.push(`${escapeHtml(t.reportAngleL)} <span class="ang">${angles.leftKnee}°</span>`);
+      if (angles.rightKnee != null) parts.push(`${escapeHtml(t.reportAngleR)} <span class="ang">${angles.rightKnee}°</span>`);
+      if (angles.guardElbow != null) parts.push(`${escapeHtml(t.reportAngleE)} <span class="ang">${angles.guardElbow}°</span>`);
+      return parts.join(' · ');
+    };
+    const freezeHtml = reportCache.snaps.length ? reportCache.snaps.map(sn => `
+      <div class="report-snap">
+        ${sn.dataUrl ? `<img src="${sn.dataUrl}" alt="freeze frame" />` : `<div class="report-empty">${escapeHtml(t.reportNoFreezes)}</div>`}
+        <div class="cap">⏱ ${formatTime(sn.videoTime)}${angleHtml(sn.angles) ? ' · ' + angleHtml(sn.angles) : ''}</div>
+      </div>`).join('')
+      : `<div class="report-empty">${escapeHtml(t.reportNoFreezes)}</div>`;
+    const noteHtml = reportCache.notes.length ? reportCache.notes.map(ev => `
+      <div class="report-note">
+        <div class="nt">⏱ ${formatTime(ev.videoTime || 0)}</div>
+        <div>${escapeHtml(ev.zh || '')}</div>
+        <div class="nen">${escapeHtml(ev.en || '')}</div>
+      </div>`).join('')
+      : `<div class="report-empty">${escapeHtml(t.reportNoNotes)}</div>`;
+    document.getElementById('reportBody').innerHTML = `
+      <div class="report-head">
+        <h2>${escapeHtml(t.reportTitle)}<span class="en">${escapeHtml(t.reportTitleEn)}</span></h2>
+        <button onclick="closeReport()" style="flex-shrink:0;">${escapeHtml(t.reportClose)}</button>
+      </div>
+      <div class="report-meta">
+        <span class="k">${escapeHtml(t.reportStudent)}<br/><span style="color:#999;">${escapeHtml(t.reportStudentEn)}</span></span>
+        <span><input id="reportStudentName" placeholder="${escapeHtml(t.reportStudentPh)}" value="${escapeHtml(s.studentName || '')}" onchange="saveReportStudentName()" /></span>
+        <span class="k">${escapeHtml(t.reportDate)}<br/><span style="color:#999;">${escapeHtml(t.reportDateEn)}</span></span>
+        <span><input type="date" value="${reportCache.dateStr}" onchange="onReportDateChange(this.value)" /></span>
+        <span class="k">${escapeHtml(t.reportVideo)}<br/><span style="color:#999;">${escapeHtml(t.reportVideoEn)}</span></span>
+        <span>${escapeHtml(s.videoName || '')}</span>
+        <span class="k">${escapeHtml(t.reportRecorded)}<br/><span style="color:#999;">${escapeHtml(t.reportRecordedEn)}</span></span>
+        <span>${recStr}</span>
+      </div>
+      <h3>${escapeHtml(t.reportFreezes)}<span class="en">${escapeHtml(t.reportFreezesEn)}</span></h3>
+      ${freezeHtml}
+      <h3>${escapeHtml(t.reportNotes)}<span class="en">${escapeHtml(t.reportNotesEn)}</span></h3>
+      ${noteHtml}
+      <div class="report-actions">
+        <button onclick="closeReport()">${escapeHtml(t.reportClose)}</button>
+      </div>`;
   }
 
   async function ensureSessionVideo(s) {
