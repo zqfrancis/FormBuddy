@@ -2089,24 +2089,49 @@
 
   // ---- Report view (4a): freeze snapshots + angles + notes + student/date ----
   let reportCache = null; // { s, snaps: [{videoTime, dataUrl, angles}], notes, dateStr }
+  let reportVideoEl = null; // dedicated offscreen video for snapshots — main player stays untouched
 
-  async function captureFreezeSnapshot(ev) {
-    // Seeks the main video to ev.videoTime and snapshots frame + skeleton.
+  async function ensureReportVideo(s) {
+    if (!reportVideoEl) {
+      reportVideoEl = document.createElement('video');
+      reportVideoEl.muted = true;
+      reportVideoEl.preload = 'auto';
+      reportVideoEl.playsInline = true;
+      reportVideoEl.style.position = 'fixed';
+      reportVideoEl.style.left = '-9999px';
+      reportVideoEl.style.width = '320px';
+      document.body.appendChild(reportVideoEl);
+    }
+    const url = s.videoUrl || (s.videoBlob ? URL.createObjectURL(s.videoBlob) : null);
+    if (!url) return false;
+    if (reportVideoEl.dataset.fbSrc !== url) {
+      reportVideoEl.dataset.fbSrc = url;
+      reportVideoEl.src = url;
+      await new Promise(res => {
+        const to = setTimeout(res, 5000);
+        reportVideoEl.addEventListener('loadeddata', function h() { clearTimeout(to); res(); }, { once: true });
+      });
+    }
+    return reportVideoEl.videoWidth > 0;
+  }
+
+  async function captureFreezeSnapshot(ev, rv) {
+    // Seeks the dedicated report video to ev.videoTime and snapshots frame + skeleton.
     // Returns { dataUrl, angles } or null when the video is unavailable.
-    const vw = video.videoWidth, vh = video.videoHeight;
+    const vw = rv.videoWidth, vh = rv.videoHeight;
     if (!vw || !vh) return null;
-    video.pause();
-    const dur = video.duration || 1e9;
-    video.currentTime = Math.min(Math.max(ev.videoTime || 0, 0), Math.max(dur - 0.05, 0));
+    rv.pause();
+    const dur = rv.duration || 1e9;
+    rv.currentTime = Math.min(Math.max(ev.videoTime || 0, 0), Math.max(dur - 0.05, 0));
     await new Promise(res => {
       const to = setTimeout(res, 2000);
-      video.addEventListener('seeked', function h() { clearTimeout(to); res(); }, { once: true });
+      rv.addEventListener('seeked', function h() { clearTimeout(to); res(); }, { once: true });
     });
     await new Promise(r => setTimeout(r, 60)); // let the frame paint
     const W = 480, H = Math.round(480 * vh / vw);
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const c2 = c.getContext('2d');
-    c2.drawImage(video, 0, 0, W, H);
+    c2.drawImage(rv, 0, 0, W, H);
     let angles = null;
     if (ev.landmarks) {
       try { angles = drawPoseSnapshot(c2, ev.landmarks, W, H); } catch (e) {}
@@ -2177,12 +2202,13 @@
     document.getElementById('reportBody').innerHTML = `<div class="report-empty">${escapeHtml(t.reportLoading)}</div>`;
     document.getElementById('reportOverlay').style.display = 'block';
     reportCache = { s: s, snaps: [], notes: [], dateStr: new Date().toISOString().slice(0, 10) };
-    try { await ensureSessionVideo(s); } catch (e) {}
+    let rv = null;
+    try { rv = await ensureReportVideo(s) ? reportVideoEl : null; } catch (e) {}
     const freezes = (s.events || []).filter(ev => ev.type === 'freeze')
       .sort((a, b) => (a.videoTime || 0) - (b.videoTime || 0));
     for (const ev of freezes) {
       let snap = null;
-      try { snap = await captureFreezeSnapshot(ev); } catch (e) {}
+      if (rv) { try { snap = await captureFreezeSnapshot(ev, rv); } catch (e) {} }
       reportCache.snaps.push({
         videoTime: ev.videoTime || 0,
         dataUrl: snap && snap.dataUrl,
@@ -2198,8 +2224,7 @@
   function closeReport() {
     document.getElementById('reportOverlay').style.display = 'none';
     reportCache = null;
-    video.pause();
-    updateSeekerUI();
+    // main player was never touched (snapshots use the offscreen reportVideoEl), nothing to restore
   }
 
   function saveReportStudentName() {
