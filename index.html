@@ -336,8 +336,39 @@
   .report-note .nt { font-size:0.78rem; color:#777; margin-bottom:2px; }
   .report-note .nen { color:#666; font-size:0.85rem; }
   .report-empty { color:#888; font-size:0.88rem; padding:8px 0; }
-  .report-actions { display:flex; gap:10px; margin-top:18px; }
+  .report-actions { display:flex; gap:10px; margin-top:18px; flex-wrap:wrap; align-items:center; }
   .report-actions button { font-size:0.9rem; padding:8px 16px; border-radius:8px; cursor:pointer; }
+  .report-printonly { display:none; }
+  .report-hint { font-size:0.82rem; color:#666; flex-basis:100%; margin:2px 0 0 0; }
+  /* ---- Report print (4b): one-page A4 paper layout, no new dependencies ---- */
+  @media print {
+    @page { size: A4; margin: 12mm 10mm; }
+    body > *:not(#reportOverlay) { display:none !important; }
+    #reportOverlay {
+      position:static !important; background:#fff !important; padding:0 !important;
+      display:block !important; overflow:visible !important;
+    }
+    .report-page {
+      box-shadow:none; border-radius:0; max-width:none; padding:0;
+      font-size:9.5pt; line-height:1.45;
+    }
+    .report-head { padding-bottom:6px; margin-bottom:10px; }
+    .report-head h2 { font-size:14pt; }
+    .report-head h2 .en { font-size:9pt; }
+    .report-head button { display:none !important; }
+    .report-meta { grid-template-columns:auto 1fr; gap:3px 10px; margin-bottom:10px; font-size:9.5pt; }
+    .report-meta input.report-screenonly { display:none !important; }
+    .report-printonly { display:inline; }
+    .report-page h3 { font-size:11pt; margin:10px 0 5px 0; }
+    .report-snap { padding:6px; margin-bottom:7px; page-break-inside:avoid; }
+    .report-snap img { max-height:230px; width:auto; max-width:100%; }
+    .report-snap .cap { margin-top:4px; font-size:8.5pt; }
+    .report-note { padding:4px 8px; margin-bottom:5px; page-break-inside:avoid; }
+    .report-note .nt { font-size:8pt; margin-bottom:0; }
+    .report-note .nen { font-size:8.5pt; }
+    .report-empty { font-size:9pt; padding:4px 0; }
+    .report-actions { display:none !important; }
+  }
   @media (max-width: 768px) {
     header {
       flex-direction: column;
@@ -656,6 +687,8 @@
       reportNoFreezes: "本次录制没有定格分析点。",
       reportNoNotes: "本次录制没有点评便签。",
       reportClose: "✕ 关闭",
+      reportPrint: "🖨️ 打印 / 存 PDF",
+      reportPrintHint: "小贴士：在打印对话框中选择「另存为 PDF」，即可导出电子版报告。",
       reportLoading: "正在生成报告，请稍候…",
       reportAngleL: "左膝",
       reportAngleR: "右膝",
@@ -779,6 +812,8 @@
       reportNoFreezes: "No freeze frames in this session.",
       reportNoNotes: "No feedback notes in this session.",
       reportClose: "✕ Close",
+      reportPrint: "🖨️ Print / Save PDF",
+      reportPrintHint: "Tip: choose \"Save as PDF\" in the print dialog to export a digital copy.",
       reportLoading: "Generating report, please wait…",
       reportAngleL: "Left knee",
       reportAngleR: "Right knee",
@@ -2242,6 +2277,19 @@
     renderReportHtml();
   }
 
+  // 4b: sync editable fields into print-only spans, then open the print dialog
+  function printReport() {
+    if (!reportCache) return;
+    const t = i18n[currentLang];
+    const nameInp = document.getElementById('reportStudentName');
+    if (nameInp) { reportCache.s.studentName = nameInp.value.trim(); try { idbPut(reportCache.s); } catch (e) {} }
+    const nameSpan = document.getElementById('reportPrintName');
+    if (nameSpan) nameSpan.textContent = (reportCache.s.studentName || t.reportStudentPh);
+    const dateSpan = document.getElementById('reportPrintDate');
+    if (dateSpan) dateSpan.textContent = reportCache.dateStr || '';
+    window.print();
+  }
+
   function renderReportHtml() {
     const t = i18n[currentLang];
     if (!reportCache) return;
@@ -2276,9 +2324,9 @@
       </div>
       <div class="report-meta">
         <span class="k">${escapeHtml(t.reportStudent)}<br/><span style="color:#999;">${escapeHtml(t.reportStudentEn)}</span></span>
-        <span><input id="reportStudentName" placeholder="${escapeHtml(t.reportStudentPh)}" value="${escapeHtml(s.studentName || '')}" onchange="saveReportStudentName()" /></span>
+        <span><input id="reportStudentName" class="report-screenonly" placeholder="${escapeHtml(t.reportStudentPh)}" value="${escapeHtml(s.studentName || '')}" onchange="saveReportStudentName()" /><span class="report-printonly" id="reportPrintName">${escapeHtml(s.studentName || t.reportStudentPh)}</span></span>
         <span class="k">${escapeHtml(t.reportDate)}<br/><span style="color:#999;">${escapeHtml(t.reportDateEn)}</span></span>
-        <span><input type="date" value="${reportCache.dateStr}" onchange="onReportDateChange(this.value)" /></span>
+        <span><input type="date" class="report-screenonly" value="${reportCache.dateStr}" onchange="onReportDateChange(this.value)" /><span class="report-printonly" id="reportPrintDate">${escapeHtml(reportCache.dateStr)}</span></span>
         <span class="k">${escapeHtml(t.reportVideo)}<br/><span style="color:#999;">${escapeHtml(t.reportVideoEn)}</span></span>
         <span>${escapeHtml(s.videoName || '')}</span>
         <span class="k">${escapeHtml(t.reportRecorded)}<br/><span style="color:#999;">${escapeHtml(t.reportRecordedEn)}</span></span>
@@ -2290,6 +2338,8 @@
       ${noteHtml}
       <div class="report-actions">
         <button onclick="closeReport()">${escapeHtml(t.reportClose)}</button>
+        <button onclick="printReport()">${escapeHtml(t.reportPrint)}</button>
+        <div class="report-hint">${escapeHtml(t.reportPrintHint)}</div>
       </div>`;
   }
 
