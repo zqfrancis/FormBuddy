@@ -343,6 +343,8 @@
   /* ---- Report print (4b): one-page A4 paper layout, no new dependencies ---- */
   @media print {
     @page { size: A4; margin: 12mm 10mm; }
+    body { background:#fff !important; }
+    html { background:#fff !important; }
     body > *:not(#reportOverlay) { display:none !important; }
     #reportOverlay {
       position:static !important; background:#fff !important; padding:0 !important;
