@@ -690,6 +690,7 @@
       reportNotes: "💬 点评便签",
       reportNotesEn: "Feedback Notes",
       reportNoFreezes: "本次录制没有定格分析点。",
+      reportSnapFailed: "截图暂不可用。",
       reportNoNotes: "本次录制没有点评便签。",
       reportClose: "✕ 关闭",
       reportPrint: "🖨️ 打印 / 存 PDF",
@@ -815,6 +816,7 @@
       reportNotes: "💬 Feedback Notes",
       reportNotesEn: "点评便签",
       reportNoFreezes: "No freeze frames in this session.",
+      reportSnapFailed: "Snapshot unavailable.",
       reportNoNotes: "No feedback notes in this session.",
       reportClose: "✕ Close",
       reportPrint: "🖨️ Print / Save PDF",
@@ -2311,7 +2313,7 @@
     };
     const freezeHtml = reportCache.snaps.length ? reportCache.snaps.map(sn => `
       <div class="report-snap">
-        ${sn.dataUrl ? `<img src="${sn.dataUrl}" alt="freeze frame" />` : `<div class="report-empty">${escapeHtml(t.reportNoFreezes)}</div>`}
+        ${sn.dataUrl ? `<img src="${sn.dataUrl}" alt="freeze frame" />` : `<div class="report-empty">${escapeHtml(t.reportSnapFailed)}</div>`}
         <div class="cap">⏱ ${formatTime(sn.videoTime)}${angleHtml(sn.angles) ? ' · ' + angleHtml(sn.angles) : ''}</div>
       </div>`).join('')
       : `<div class="report-empty">${escapeHtml(t.reportNoFreezes)}</div>`;
