@@ -335,6 +335,8 @@
   .report-note { border-left:3px solid #00b359; background:#f5faf7; border-radius:0 6px 6px 0; padding:8px 10px; margin-bottom:8px; }
   .report-note .nt { font-size:0.78rem; color:#777; margin-bottom:2px; }
   .report-note .nen { color:#666; font-size:0.85rem; }
+  /* 4c: template group badge on report notes (template↔report integration) */
+  .report-group { display:inline-block; font-size:0.72rem; color:#0a7a44; background:#e3f5ec; border:1px solid #bfe6cf; border-radius:999px; padding:1px 8px; margin-left:6px; vertical-align:1px; }
   .report-empty { color:#888; font-size:0.88rem; padding:8px 0; }
   .report-actions { display:flex; gap:10px; margin-top:18px; flex-wrap:wrap; align-items:center; }
   .report-actions button { font-size:0.9rem; padding:8px 16px; border-radius:8px; cursor:pointer; }
@@ -368,6 +370,7 @@
     .report-note { padding:4px 8px; margin-bottom:5px; page-break-inside:avoid; }
     .report-note .nt { font-size:8pt; margin-bottom:0; }
     .report-note .nen { font-size:8.5pt; }
+    .report-group { font-size:8pt; padding:0 6px; margin-left:4px; }
     .report-empty { font-size:9pt; padding:4px 0; }
     .report-actions { display:none !important; }
   }
@@ -2312,13 +2315,21 @@
         <div class="cap">⏱ ${formatTime(sn.videoTime)}${angleHtml(sn.angles) ? ' · ' + angleHtml(sn.angles) : ''}</div>
       </div>`).join('')
       : `<div class="report-empty">${escapeHtml(t.reportNoFreezes)}</div>`;
-    const noteHtml = reportCache.notes.length ? reportCache.notes.map(ev => `
-      <div class="report-note">
-        <div class="nt">⏱ ${formatTime(ev.videoTime || 0)}</div>
-        <div>${escapeHtml(ev.zh || '')}</div>
-        <div class="nen">${escapeHtml(ev.en || '')}</div>
-      </div>`).join('')
-      : `<div class="report-empty">${escapeHtml(t.reportNoNotes)}</div>`;
+    // 4c: template↔report integration — note shows its template group badge;
+    // legacy notes without a valid group show no badge; empty-text notes are skipped.
+    const noteHtml = (() => {
+      const shown = reportCache.notes.filter(ev => ev && (ev.zh || ev.en));
+      if (!shown.length) return `<div class="report-empty">${escapeHtml(t.reportNoNotes)}</div>`;
+      return shown.map(ev => {
+        const gk = (ev.group && NOTE_GROUP_ORDER.includes(ev.group)) ? ev.group : null;
+        return `
+        <div class="report-note">
+          <div class="nt">⏱ ${formatTime(ev.videoTime || 0)}${gk ? `<span class="report-group">${escapeHtml(t[gk] || gk)}</span>` : ''}</div>
+          ${ev.zh ? `<div>${escapeHtml(ev.zh)}</div>` : ''}
+          ${ev.en ? `<div class="nen">${escapeHtml(ev.en)}</div>` : ''}
+        </div>`;
+      }).join('');
+    })();
     document.getElementById('reportBody').innerHTML = `
       <div class="report-head">
         <h2>${escapeHtml(t.reportTitle)}<span class="en">${escapeHtml(t.reportTitleEn)}</span></h2>
