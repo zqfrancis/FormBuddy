@@ -463,6 +463,15 @@
         </span>
         <button id="coachRecordBtn" style="display:none; background:#ff4757 !important; color:#fff !important; border:none !important;" onclick="toggleRecording()">🎙️ Record Audio</button>
         <button id="btnPen" style="display:none;" onclick="togglePenMode()">✏️ 画笔</button>
+        <span id="penDurWrap" style="display:none; align-items:center; gap:6px; font-size:0.85rem; font-weight:600;">
+          <span id="penDurLabel">✏️ 显示时长</span>
+          <select id="penDurSelect" style="padding:6px 8px;" onchange="setStrokeSecs(this.value)">
+            <option value="2">2s</option>
+            <option value="3.5" selected>3.5s</option>
+            <option value="5">5s</option>
+            <option value="8">8s</option>
+          </select>
+        </span>
         <button id="playFeedbackBtn" style="display:none;" onclick="playFeedback()">▶️ Play Audio</button>
       </div>
     </div>
@@ -698,6 +707,7 @@
       reportPrintHint: "小贴士：在打印对话框中选择「另存为 PDF」，即可导出电子版报告。",
       btnPen: "✏️ 画笔",
       btnPenOn: "✏️ 画笔（开）",
+      penDurLabel: "✏️ 显示时长",
       penNeedPause: "请先暂停视频再画",
       penNeedRec: "录制中才能画笔标注",
       penTip: "在冻结帧上画圈画箭头，笔画随录制保存",
@@ -829,6 +839,7 @@
       reportPrintHint: "Tip: choose \"Save as PDF\" in the print dialog to export a digital copy.",
       btnPen: "✏️ Pen",
       btnPenOn: "✏️ Pen (On)",
+      penDurLabel: "✏️ Show for",
       penNeedPause: "Pause the video before drawing",
       penNeedRec: "Start recording to use the pen",
       penTip: "Draw circles and arrows on the frozen frame; strokes are saved with the recording",
@@ -857,6 +868,16 @@
   let penDrawing = false;       // a stroke is in progress right now
   let penStroke = null;         // stroke in progress: {pts:[[nx,ny]...], color, w}
   let teleStrokes = [];         // strokes rendered for the current freeze view (normalized coords)
+
+  // ---- Telestrator timeline playback (5b): strokes appear/disappear on the
+  // audio clock, the same mechanism as note subtitles (3b); the display
+  // duration is user-configurable and persisted in localStorage.
+  const STROKE_SECS_KEY = 'formbuddy_stroke_secs_v1';
+  const STROKE_SECS_OPTS = [2, 3.5, 5, 8];
+  let STROKE_SHOW_SECS = 3.5;   // how long a stroke stays visible during replay/export
+  let previewStrokes = [];      // active during replay: [{ev, until}]
+  let previewStrokesDirty = false;
+  let exportStrokes = [];       // active during export: [{ev, until}]
 
   // ---- Directed session (v2) state ----
   let recSession = null;          // {id, videoName, createdAt, events:[], duration}
@@ -1043,6 +1064,8 @@
     initDragEvents();
     renderPendingList();
     loadCustomTemplates();
+    loadStrokeSecs(); // 5b: restore stroke display duration
+    document.getElementById('penDurSelect').value = String(STROKE_SHOW_SECS);
     renderTemplateChips();
     renderCustomTplUi();
     loadSessions();
@@ -1820,6 +1843,53 @@
     btn.title = t.penTip;
   }
 
+  // ---- Telestrator timeline playback (5b) ----
+  function loadStrokeSecs() {
+    try {
+      const v = parseFloat(localStorage.getItem(STROKE_SECS_KEY));
+      if (STROKE_SECS_OPTS.includes(v)) STROKE_SHOW_SECS = v;
+    } catch (e) {}
+  }
+  function setStrokeSecs(v) {
+    const f = parseFloat(v);
+    if (!STROKE_SECS_OPTS.includes(f)) return;
+    STROKE_SHOW_SECS = f;
+    try { localStorage.setItem(STROKE_SECS_KEY, String(f)); } catch (e) {}
+  }
+  function syncPenDurUI() {
+    const wrap = document.getElementById('penDurWrap');
+    if (wrap) wrap.style.display = currentRole === 'Coach' ? 'inline-flex' : 'none';
+  }
+  // Repaint the preview overlay: skeleton (when frozen) + active timeline strokes
+  function repaintPreviewStrokes() {
+    const keep = teleStrokes;
+    teleStrokes = previewStrokes.map(s => ({ pts: s.ev.pts, color: s.ev.color, w: s.ev.w }));
+    if (replayFreezeResults) drawPoseFrame(replayFreezeResults);
+    else { ctx.clearRect(0, 0, stage.clientWidth, stage.clientHeight); redrawTeleStrokes(); }
+    teleStrokes = keep;
+  }
+  function updatePreviewStrokes(tA) {
+    const before = previewStrokes.length;
+    previewStrokes = previewStrokes.filter(s => tA < s.until);
+    if (previewStrokesDirty || previewStrokes.length !== before) {
+      previewStrokesDirty = false;
+      repaintPreviewStrokes();
+    }
+  }
+  function clearPreviewStrokes() {
+    if (previewStrokes.length === 0 && !previewStrokesDirty) return;
+    previewStrokes = [];
+    previewStrokesDirty = true;
+    updatePreviewStrokes(1e9);
+  }
+  // Burn the active strokes into the export canvas (export redraws every frame anyway)
+  function drawExportStrokes() {
+    if (!exportAudioEl || exportStrokes.length === 0) return;
+    const tA = exportAudioEl.currentTime;
+    exportStrokes = exportStrokes.filter(s => tA < s.until);
+    for (const s of exportStrokes) drawFullStroke(s.ev);
+  }
+
   // ---- Custom templates (3c): user add/edit/delete, persisted in localStorage ----
   const CUSTOM_TPL_KEY = 'formbuddy_custom_templates_v1';
   let customTemplates = [];
@@ -1983,6 +2053,7 @@
     if (isRecording) recordBtn.innerText = t.btnRecordStop;
     else recordBtn.innerText = t.btnRecordStart;
     syncPenButton(); // 5a: refresh pen label for the new language
+    document.getElementById('penDurLabel').innerText = t.penDurLabel; // 5b
 
     document.getElementById('playFeedbackBtn').innerText = t.btnPlayAudio;
     document.getElementById('lblTimelineHeader').innerText = t.lblTimelineHeader;
@@ -2039,6 +2110,7 @@
     document.getElementById('templateSection').style.display = isCoach ? 'block' : 'none';
     document.getElementById('coachRecordBtn').style.display = isCoach ? 'inline-block' : 'none';
     syncPenButton(); // 5a: pen only in coach view while recording
+    syncPenDurUI(); // 5b: stroke display-duration setting visible in coach view
     document.getElementById('timeline-points').style.display = isCoach ? 'block' : 'none';
 
     document.getElementById('secLayerSettings').style.display = isCoach ? 'block' : 'none';
@@ -2523,10 +2595,12 @@
         document.getElementById('freezeBanner').style.display = 'none';
         replayFreezeUntil = -1; replayFreezeResults = null;
         hideNoteSubtitle();
+        clearPreviewStrokes();
         if (currentRole === 'Coach') triggerFrameAnalysis();
       } else {
         exportFreezeUntil = -1; exportFreezeResults = null;
         exportNoteEv = null; exportNoteUntil = -1;
+        exportStrokes = [];
       }
     } else if (ev.type === 'play') {
       if (mode === 'preview') {
@@ -2544,7 +2618,9 @@
       if (mode === 'preview') { activeNoteEv = ev; activeNoteUntil = tA + NOTE_SUBTITLE_SECS; }
       else { exportNoteEv = ev; exportNoteUntil = tA + NOTE_SUBTITLE_SECS; }
     } else if (ev.type === 'stroke') {
-      // 5a: strokes are recorded as timestamped events; 5b renders them on the timeline
+      // 5b: timeline-driven strokes, same mechanism as note subtitles (5a only recorded them)
+      if (mode === 'preview') { previewStrokes.push({ ev, until: tA + STROKE_SHOW_SECS }); previewStrokesDirty = true; }
+      else { exportStrokes.push({ ev, until: tA + STROKE_SHOW_SECS }); }
     } else if (ev.type === 'freeze') {
       video.pause();
       video.currentTime = ev.videoTime;
@@ -2582,6 +2658,7 @@
       }
     }
     updateNoteSubtitle(tA);
+    updatePreviewStrokes(tA); // 5b: timeline-driven telestrator strokes
     updateDirectProgress(tA / (s.duration || 1));
     replayRaf = requestAnimationFrame(replayTick);
   }
@@ -2592,6 +2669,7 @@
     isReplaying = false;
     replaySession = null;
     if (replayAudioEl) { try { replayAudioEl.pause(); } catch (e) {} replayAudioEl = null; }
+    clearPreviewStrokes(); // 5b: drop any timeline strokes left on the overlay
     if (!isExporting) {
       video.pause();
       video.muted = false;
@@ -2628,6 +2706,7 @@
     exportFreezeUntil = -1;
     exportFreezeResults = null;
     exportNoteEv = null; exportNoteUntil = -1;
+    exportStrokes = []; // 5b: timeline strokes start empty for each export
     exportChunks = [];
     exportMime = mime;
     video.loop = false;
@@ -2694,6 +2773,7 @@
     }
     if (overlay) drawPoseFrame(overlay, false);
     drawExportSubtitle();
+    drawExportStrokes(); // 5b: burn active timeline strokes into the export
   }
 
   async function finishExportRender() {
@@ -2731,6 +2811,7 @@
     exportChunks = [];
     exportStoppedPromise = null;
     exportNoteEv = null; exportNoteUntil = -1;
+    exportStrokes = []; // 5b
     video.style.display = 'block';
     video.muted = false;
     document.getElementById('freezeBanner').style.display = 'none';
