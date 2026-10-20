@@ -463,6 +463,16 @@
         </span>
         <button id="coachRecordBtn" style="display:none; background:#ff4757 !important; color:#fff !important; border:none !important;" onclick="toggleRecording()">🎙️ Record Audio</button>
         <button id="btnPen" style="display:none;" onclick="togglePenMode()">✏️ 画笔</button>
+        <span id="penToolsWrap" style="display:none; align-items:center; gap:6px; flex-wrap:wrap;">
+          <span id="penColorsWrap" style="display:inline-flex; align-items:center; gap:4px;"></span>
+          <select id="penWidthSelect" style="padding:6px 8px;" onchange="setPenWidth(this.value)">
+            <option value="3">细</option>
+            <option value="5" selected>中</option>
+            <option value="8">粗</option>
+          </select>
+          <button id="btnPenUndo" onclick="undoTeleStroke()">↩️ 撤销</button>
+          <button id="btnPenClear" onclick="clearPenFrame()">🗑️ 清空</button>
+        </span>
         <span id="penDurWrap" style="display:none; align-items:center; gap:6px; font-size:0.85rem; font-weight:600;">
           <span id="penDurLabel">✏️ 显示时长</span>
           <select id="penDurSelect" style="padding:6px 8px;" onchange="setStrokeSecs(this.value)">
@@ -707,6 +717,15 @@
       reportPrintHint: "小贴士：在打印对话框中选择「另存为 PDF」，即可导出电子版报告。",
       btnPen: "✏️ 画笔",
       btnPenOn: "✏️ 画笔（开）",
+      penColorTitle: "画笔颜色",
+      penWidthTitle: "笔尖粗细",
+      penWidthThin: "细",
+      penWidthMid: "中",
+      penWidthThick: "粗",
+      btnPenUndo: "↩️ 撤销",
+      btnPenClear: "🗑️ 清空",
+      penClearSure: "确定清空？",
+      penNothingToUndo: "没有可撤销的笔画",
       penDurLabel: "✏️ 显示时长",
       penNeedPause: "请先暂停视频再画",
       penNeedRec: "录制中才能画笔标注",
@@ -839,6 +858,15 @@
       reportPrintHint: "Tip: choose \"Save as PDF\" in the print dialog to export a digital copy.",
       btnPen: "✏️ Pen",
       btnPenOn: "✏️ Pen (On)",
+      penColorTitle: "Pen color",
+      penWidthTitle: "Pen width",
+      penWidthThin: "Thin",
+      penWidthMid: "Medium",
+      penWidthThick: "Thick",
+      btnPenUndo: "↩️ Undo",
+      btnPenClear: "🗑️ Clear",
+      penClearSure: "Clear all?",
+      penNothingToUndo: "Nothing to undo",
       penDurLabel: "✏️ Show for",
       penNeedPause: "Pause the video before drawing",
       penNeedRec: "Start recording to use the pen",
@@ -862,11 +890,16 @@
   let mediaStreamRef = null;
 
   // ---- Telestrator pen (5a): draw circles/arrows on a frozen frame during recording ----
-  const PEN_COLOR = '#ffdd33';  // classic telestrator yellow, matches target reference video
-  const PEN_WIDTH = 5;          // CSS px
+  // Classic telestrator palette; color/width are user-selectable (5c) and
+  // persisted in localStorage so the coach's preference survives reloads.
+  const PEN_COLORS = ['#ffdd33', '#ff5252', '#40c4ff', '#69f0ae'];  // yellow/red/blue/green
+  const PEN_WIDTHS = [3, 5, 8];                                    // thin/medium/thick, CSS px
+  const PEN_PREFS_KEY = 'formbuddy_pen_prefs_v1';
+  let PEN_COLOR = '#ffdd33';  // matches target reference video
+  let PEN_WIDTH = 5;
   let penMode = false;          // pen drawing mode on/off
   let penDrawing = false;       // a stroke is in progress right now
-  let penStroke = null;         // stroke in progress: {pts:[[nx,ny]...], color, w}
+  let penStroke = null;         // stroke in progress: {id, pts:[[nx,ny]...], color, w}
   let teleStrokes = [];         // strokes rendered for the current freeze view (normalized coords)
 
   // ---- Telestrator timeline playback (5b): strokes appear/disappear on the
@@ -1066,6 +1099,9 @@
     loadCustomTemplates();
     loadStrokeSecs(); // 5b: restore stroke display duration
     document.getElementById('penDurSelect').value = String(STROKE_SHOW_SECS);
+    loadPenPrefs(); // 5c: restore pen color/width preference
+    document.getElementById('penWidthSelect').value = String(PEN_WIDTH);
+    syncPenTools(); // 5c: paint the color swatches for the restored color
     renderTemplateChips();
     renderCustomTplUi();
     loadSessions();
@@ -1809,11 +1845,16 @@
     if (!isRecording) { showNoteToast(t.penNeedRec); return; }
     if (!penMode && !video.paused) { showNoteToast(t.penNeedPause); return; }
     penMode = !penMode;
+    if (!penMode) { clearPenArm = false; if (clearPenTimer) clearTimeout(clearPenTimer); }
     syncPenButton();
+    syncPenTools(); // 5c: show/hide the color/width/undo/clear strip
   }
   function startTeleStroke(e) {
     penDrawing = true;
-    penStroke = { pts: [penPosNorm(e)], color: PEN_COLOR, w: PEN_WIDTH };
+    penStroke = {
+      id: 'st' + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36), // 5c: id links stroke to its session event for undo
+      pts: [penPosNorm(e)], color: PEN_COLOR, w: PEN_WIDTH
+    };
   }
   function moveTeleStroke(e) {
     if (!penDrawing || !penStroke) return;
@@ -1828,11 +1869,112 @@
     const done = penStroke;
     penStroke = null;
     teleStrokes.push(done);
-    // Attach to the matching freeze point so strokes survive jumping between points
+    // Attach to the matching freeze point so strokes survive jumping between points.
+    // 5c fix: teleStrokes IS fp.strokes when the point's layer was just restored —
+    // guard against the double-push so undo/clear see each stroke exactly once.
     const vt = r2(video.currentTime);
     const fp = freezePoints.find(p => Math.abs(p.time - vt) < 0.05);
-    if (fp) { fp.strokes = fp.strokes || []; fp.strokes.push(done); }
-    logRecEvent({ type: 'stroke', videoTime: vt, pts: done.pts, color: done.color, w: done.w });
+    if (fp) { fp.strokes = fp.strokes || []; if (fp.strokes !== teleStrokes) fp.strokes.push(done); }
+    logRecEvent({ type: 'stroke', strokeId: done.id, videoTime: vt, pts: done.pts, color: done.color, w: done.w });
+  }
+  // ---- Pen tools (5c): color/width picker, undo one stroke, clear current frame ----
+  function loadPenPrefs() {
+    try {
+      const o = JSON.parse(localStorage.getItem(PEN_PREFS_KEY) || 'null');
+      if (o && PEN_COLORS.includes(o.c)) PEN_COLOR = o.c;
+      if (o && PEN_WIDTHS.includes(o.w)) PEN_WIDTH = o.w;
+    } catch (e) {}
+  }
+  function savePenPrefs() {
+    try { localStorage.setItem(PEN_PREFS_KEY, JSON.stringify({ c: PEN_COLOR, w: PEN_WIDTH })); } catch (e) {}
+  }
+  function setPenColor(c) {
+    if (!PEN_COLORS.includes(c)) return;
+    PEN_COLOR = c;
+    savePenPrefs();
+    renderPenSwatches();
+  }
+  function setPenWidth(v) {
+    const w = parseInt(v, 10);
+    if (!PEN_WIDTHS.includes(w)) return;
+    PEN_WIDTH = w;
+    savePenPrefs();
+  }
+  function renderPenSwatches() {
+    const wrap = document.getElementById('penColorsWrap');
+    if (!wrap) return;
+    const t = i18n[currentLang];
+    wrap.innerHTML = PEN_COLORS.map(c =>
+      `<button data-color="${c}" onclick="setPenColor('${c}')" title="${t.penColorTitle}" style="width:26px;height:26px;border-radius:50%;background:${c};border:${c === PEN_COLOR ? '3px solid #fff' : '1px solid rgba(255,255,255,.4)'};box-shadow:${c === PEN_COLOR ? '0 0 0 2px #00e5ff' : 'none'};padding:0;cursor:pointer;"></button>`
+    ).join('');
+  }
+  function syncPenTools() {
+    const wrap = document.getElementById('penToolsWrap');
+    if (wrap) wrap.style.display = (currentRole === 'Coach' && isRecording && penMode) ? 'inline-flex' : 'none';
+    const t = i18n[currentLang];
+    const undoBtn = document.getElementById('btnPenUndo');
+    if (undoBtn) { undoBtn.innerText = t.btnPenUndo; undoBtn.title = t.btnPenUndo; }
+    const clearBtn = document.getElementById('btnPenClear');
+    if (clearBtn) { clearBtn.innerText = clearPenArm ? t.penClearSure : t.btnPenClear; clearBtn.title = t.btnPenClear; }
+    const wsel = document.getElementById('penWidthSelect');
+    if (wsel) {
+      wsel.title = t.penWidthTitle;
+      const opts = wsel.options;
+      if (opts.length === 3) {
+        opts[0].text = t.penWidthThin; opts[1].text = t.penWidthMid; opts[2].text = t.penWidthThick;
+      }
+    }
+    renderPenSwatches();
+  }
+  // Full repaint after undo/clear: skeleton + the strokes that remain
+  function repaintPenLayer() {
+    if (!isDemoMode && lastPoseResults && lastPoseResults.poseLandmarks && video.videoWidth) {
+      drawPoseFrame(lastPoseResults);
+    } else {
+      ctx.clearRect(0, 0, stage.clientWidth, stage.clientHeight);
+      redrawTeleStrokes();
+    }
+  }
+  function undoTeleStroke() {
+    const t = i18n[currentLang];
+    if (!isRecording || !recSession) { showNoteToast(t.penNeedRec); return; }
+    if (teleStrokes.length === 0) { showNoteToast(t.penNothingToUndo); return; }
+    const done = teleStrokes.pop();
+    const vt = r2(video.currentTime);
+    const fp = freezePoints.find(p => Math.abs(p.time - vt) < 0.05);
+    if (fp && fp.strokes && fp.strokes !== teleStrokes) {
+      const i = fp.strokes.lastIndexOf(done);
+      if (i >= 0) fp.strokes.splice(i, 1);
+    }
+    // Drop the matching logged event so replay/export no longer shows this stroke
+    const evs = recSession.events;
+    for (let i = evs.length - 1; i >= 0; i--) {
+      if (evs[i].type === 'stroke' && evs[i].strokeId === done.id) { evs.splice(i, 1); break; }
+    }
+    repaintPenLayer();
+  }
+  let clearPenArm = false, clearPenTimer = null;
+  function clearPenFrame() {
+    const t = i18n[currentLang];
+    if (!isRecording || !recSession) { showNoteToast(t.penNeedRec); return; }
+    if (teleStrokes.length === 0) { showNoteToast(t.penNothingToUndo); return; }
+    if (!clearPenArm) {
+      // two-tap in-page confirm (same pattern as template delete in 3c)
+      clearPenArm = true;
+      showNoteToast(t.penClearSure);
+      syncPenTools();
+      clearPenTimer = setTimeout(() => { clearPenArm = false; syncPenTools(); }, 3000);
+      return;
+    }
+    clearTimeout(clearPenTimer); clearPenArm = false;
+    const ids = new Set(teleStrokes.map(s => s.id));
+    teleStrokes.length = 0;
+    const vt = r2(video.currentTime);
+    const fp = freezePoints.find(p => Math.abs(p.time - vt) < 0.05);
+    if (fp && fp.strokes && fp.strokes !== teleStrokes) fp.strokes.length = 0;
+    recSession.events = recSession.events.filter(e => !(e.type === 'stroke' && ids.has(e.strokeId)));
+    repaintPenLayer();
+    syncPenTools();
   }
   function syncPenButton() {
     const btn = document.getElementById('btnPen');
@@ -2054,6 +2196,7 @@
     else recordBtn.innerText = t.btnRecordStart;
     syncPenButton(); // 5a: refresh pen label for the new language
     document.getElementById('penDurLabel').innerText = t.penDurLabel; // 5b
+    syncPenTools(); // 5c: refresh undo/clear labels + width options for the new language
 
     document.getElementById('playFeedbackBtn').innerText = t.btnPlayAudio;
     document.getElementById('lblTimelineHeader').innerText = t.lblTimelineHeader;
@@ -2111,6 +2254,7 @@
     document.getElementById('coachRecordBtn').style.display = isCoach ? 'inline-block' : 'none';
     syncPenButton(); // 5a: pen only in coach view while recording
     syncPenDurUI(); // 5b: stroke display-duration setting visible in coach view
+    syncPenTools(); // 5c: pen color/width/undo/clear strip visibility
     document.getElementById('timeline-points').style.display = isCoach ? 'block' : 'none';
 
     document.getElementById('secLayerSettings').style.display = isCoach ? 'block' : 'none';
@@ -2180,7 +2324,9 @@
       hideDirectOverlay();
       renderTemplateChips();
       penMode = false; teleStrokes = []; // 5a: pen off when recording ends
+      clearPenArm = false; if (clearPenTimer) clearTimeout(clearPenTimer); // 5c: disarm clear confirm
       syncPenButton();
+      syncPenTools(); // 5c: hide the pen tools strip
     }
   }
 
