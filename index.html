@@ -482,6 +482,15 @@
             <option value="8">8s</option>
           </select>
         </span>
+        <span id="zoomWrap" style="display:none; align-items:center; gap:6px; font-size:0.85rem; font-weight:600;">
+          <span id="zoomLabel">🔍 特写</span>
+          <select id="zoomSelect" style="padding:6px 8px;" onchange="setZoomMag(this.value)">
+            <option value="0">关闭</option>
+            <option value="1.5">1.5×</option>
+            <option value="2">2×</option>
+            <option value="3">3×</option>
+          </select>
+        </span>
         <button id="playFeedbackBtn" style="display:none;" onclick="playFeedback()">▶️ Play Audio</button>
       </div>
     </div>
@@ -730,6 +739,11 @@
       penNeedPause: "请先暂停视频再画",
       penNeedRec: "录制中才能画笔标注",
       penTip: "在冻结帧上画圈画箭头，笔画随录制保存",
+      zoomLabel: "🔍 特写",
+      zoomOff: "关闭",
+      zoomNeedPause: "请先暂停视频再设特写",
+      zoomTapHint: "点画面选特写焦点",
+      zoomFocusSet: "特写焦点已设定",
       reportLoading: "正在生成报告，请稍候…",
       reportAngleL: "左膝",
       reportAngleR: "右膝",
@@ -871,6 +885,11 @@
       penNeedPause: "Pause the video before drawing",
       penNeedRec: "Start recording to use the pen",
       penTip: "Draw circles and arrows on the frozen frame; strokes are saved with the recording",
+      zoomLabel: "🔍 Zoom",
+      zoomOff: "Off",
+      zoomNeedPause: "Pause the video before setting a zoom",
+      zoomTapHint: "Tap the frame to set the zoom focus",
+      zoomFocusSet: "Zoom focus set",
       reportLoading: "Generating report, please wait…",
       reportAngleL: "Left knee",
       reportAngleR: "Right knee",
@@ -911,6 +930,88 @@
   let previewStrokes = [];      // active during replay: [{ev, until}]
   let previewStrokesDirty = false;
   let exportStrokes = [];       // active during export: [{ev, until}]
+
+  // ---- Zoom punch-in (6a): freeze-frame close-up, replayed/exported as a
+  // timed push-in then pull-back. Live view scales the video + overlay
+  // canvas together (same transform, same origin) so the skeleton stays
+  // aligned; export wraps the frame draw in the equivalent canvas transform.
+  const ZOOM_MAGS = [0, 1.5, 2, 3];
+  const ZOOM_SHOW_SECS = 4;    // punch-in window on the audio clock, then pull back
+  let zoomMag = 0;             // live selection: 0 = off
+  let zoomFocus = [0.5, 0.5];  // normalized focus point, defaults to body center
+  let previewZoom = null;      // active during replay: {mag, fx, fy, until}
+  let exportZoom = null;       // active during export: {mag, fx, fy, until}
+  function zoomFocusDefault() {
+    const sw = stage.clientWidth, sh = stage.clientHeight;
+    if (currentBodyBBox && sw > 0 && sh > 0) {
+      const fx = ((currentBodyBBox.minX + currentBodyBBox.maxX) / 2) / sw;
+      const fy = ((currentBodyBBox.minY + currentBodyBBox.maxY) / 2) / sh;
+      return [Math.min(1, Math.max(0, fx)), Math.min(1, Math.max(0, fy))];
+    }
+    return [0.5, 0.5];
+  }
+  // Apply (or clear) the live punch-in: identical transform on video + canvas.
+  function applyLiveZoom(z) {
+    if (!z || !z.mag) {
+      video.style.transform = ''; canvas.style.transform = '';
+      video.style.transformOrigin = ''; canvas.style.transformOrigin = '';
+      return;
+    }
+    const origin = `${z.fx * 100}% ${z.fy * 100}%`;
+    video.style.transformOrigin = origin; canvas.style.transformOrigin = origin;
+    video.style.transform = `scale(${z.mag})`; canvas.style.transform = `scale(${z.mag})`;
+  }
+  function clearLiveZoom() {
+    zoomMag = 0; zoomFocus = [0.5, 0.5];
+    applyLiveZoom(null);
+  }
+  function syncZoomUI() {
+    const wrap = document.getElementById('zoomWrap');
+    if (wrap) wrap.style.display = currentRole === 'Coach' ? 'inline-flex' : 'none';
+    const t = i18n[currentLang];
+    const lbl = document.getElementById('zoomLabel');
+    if (lbl) lbl.innerText = t.zoomLabel;
+    const sel = document.getElementById('zoomSelect');
+    if (sel) {
+      sel.value = String(zoomMag);
+      if (sel.options.length >= 1) sel.options[0].text = t.zoomOff;
+    }
+  }
+  function setZoomMag(v) {
+    const t = i18n[currentLang];
+    const mag = parseFloat(v);
+    if (!ZOOM_MAGS.includes(mag)) return;
+    if (mag !== 0) {
+      if (isDemoMode || !video.paused) { showNoteToast(t.zoomNeedPause); syncZoomUI(); return; }
+      zoomMag = mag;
+      zoomFocus = zoomFocusDefault(); // punch straight into the action, tap refines focus
+      applyLiveZoom({ mag: zoomMag, fx: zoomFocus[0], fy: zoomFocus[1] });
+      if (isRecording) logRecEvent({ type: 'zoom', videoTime: r2(video.currentTime), mag: zoomMag, fx: zoomFocus[0], fy: zoomFocus[1] });
+      showNoteToast(t.zoomTapHint);
+    } else {
+      zoomMag = 0;
+      applyLiveZoom(null);
+      if (isRecording) logRecEvent({ type: 'zoom', videoTime: r2(video.currentTime), mag: 0, fx: zoomFocus[0], fy: zoomFocus[1] });
+    }
+    syncZoomUI();
+  }
+  // Tap on the frozen frame while a zoom is armed: that tap becomes the focus.
+  function setZoomFocus(nx, ny) {
+    zoomFocus = [Math.min(1, Math.max(0, nx)), Math.min(1, Math.max(0, ny))];
+    applyLiveZoom({ mag: zoomMag, fx: zoomFocus[0], fy: zoomFocus[1] });
+    if (isRecording) logRecEvent({ type: 'zoom', videoTime: r2(video.currentTime), mag: zoomMag, fx: zoomFocus[0], fy: zoomFocus[1] });
+    showNoteToast(i18n[currentLang].zoomFocusSet);
+  }
+  function onZoomTap(e) {
+    const p = penPosNorm(e);
+    setZoomFocus(p[0], p[1]);
+  }
+  function updatePreviewZoom(tA) {
+    if (previewZoom && tA >= previewZoom.until) { previewZoom = null; applyLiveZoom(null); }
+  }
+  function updateExportZoom(tA) {
+    if (exportZoom && tA >= exportZoom.until) exportZoom = null;
+  }
 
   // ---- Directed session (v2) state ----
   let recSession = null;          // {id, videoName, createdAt, events:[], duration}
@@ -1102,6 +1203,7 @@
     loadPenPrefs(); // 5c: restore pen color/width preference
     document.getElementById('penWidthSelect').value = String(PEN_WIDTH);
     syncPenTools(); // 5c: paint the color swatches for the restored color
+    syncZoomUI(); // 6a: zoom select starts off, coach-only
     renderTemplateChips();
     renderCustomTplUi();
     loadSessions();
@@ -1310,6 +1412,12 @@
         if (e.cancelable) e.preventDefault();
         return;
       }
+      // 6a: an armed zoom turns taps into focus picks (pen wins when both are on)
+      if (zoomMag > 0 && currentRole === 'Coach' && video.paused && !isDemoMode) {
+        onZoomTap(e);
+        if (e.cancelable) e.preventDefault();
+        return;
+      }
       const pos = getPos(e);
       for (let i = tagHitBoxes.length - 1; i >= 0; i--) {
         const box = tagHitBoxes[i];
@@ -1373,6 +1481,7 @@
     if (!isDemoMode && !isExporting) {
       document.getElementById('freezeBanner').style.display = 'none';
       teleStrokes = []; // 5a: playback starts, freeze drawings no longer apply
+      if (!isReplaying) applyLiveZoom(null); // 6a: replay zoom is owned by previewZoom, not this listener
       ctx.clearRect(0, 0, stage.clientWidth, stage.clientHeight);
     }
     syncPlayButton();
@@ -1516,6 +1625,12 @@
     if (video.paused || video.ended) {
       document.getElementById('freezeBanner').style.display = 'none';
       ctx.clearRect(0, 0, stage.clientWidth, stage.clientHeight);
+      // 6a: pressing play pulls back out of a live punch-in (logged so replay matches)
+      if (zoomMag > 0) {
+        zoomMag = 0; applyLiveZoom(null);
+        if (isRecording) logRecEvent({ type: 'zoom', videoTime: r2(video.currentTime), mag: 0, fx: zoomFocus[0], fy: zoomFocus[1] });
+        syncZoomUI();
+      }
       logRecEvent({ type: 'play', videoTime: r2(video.currentTime) });
       updateStatus('statusPlaying');
       requestAnimationFrame(processVideoFrame);
@@ -1557,6 +1672,7 @@
       freezePoints = [];
       renderTimelinePoints();
       renderSidebarCards();
+      clearLiveZoom(); syncZoomUI(); // 6a: a new video starts unzoomed
     }
   }
 
@@ -1663,6 +1779,8 @@
     logRecEvent({ type: 'seek', videoTime: r2(timeSec) });
     document.getElementById('freezeTime').innerText = formatTime(timeSec);
     document.getElementById('freezeBanner').style.display = 'block';
+    // 6a: a new point is a new frame — the old punch-in focus does not carry over
+    clearLiveZoom(); syncZoomUI();
     // 5a: restore this point's pen drawings (if any)
     const fp = freezePoints.find(p => Math.abs(p.time - timeSec) < 0.05);
     teleStrokes = (fp && fp.strokes) || [];
@@ -2197,6 +2315,7 @@
     syncPenButton(); // 5a: refresh pen label for the new language
     document.getElementById('penDurLabel').innerText = t.penDurLabel; // 5b
     syncPenTools(); // 5c: refresh undo/clear labels + width options for the new language
+    syncZoomUI(); // 6a: refresh zoom label + off-option for the new language
 
     document.getElementById('playFeedbackBtn').innerText = t.btnPlayAudio;
     document.getElementById('lblTimelineHeader').innerText = t.lblTimelineHeader;
@@ -2255,6 +2374,7 @@
     syncPenButton(); // 5a: pen only in coach view while recording
     syncPenDurUI(); // 5b: stroke display-duration setting visible in coach view
     syncPenTools(); // 5c: pen color/width/undo/clear strip visibility
+    syncZoomUI(); // 6a: zoom select visible in coach view
     document.getElementById('timeline-points').style.display = isCoach ? 'block' : 'none';
 
     document.getElementById('secLayerSettings').style.display = isCoach ? 'block' : 'none';
@@ -2325,6 +2445,7 @@
       renderTemplateChips();
       penMode = false; teleStrokes = []; // 5a: pen off when recording ends
       clearPenArm = false; if (clearPenTimer) clearTimeout(clearPenTimer); // 5c: disarm clear confirm
+      clearLiveZoom(); syncZoomUI(); // 6a: recording end pulls back out of any punch-in
       syncPenButton();
       syncPenTools(); // 5c: hide the pen tools strip
     }
@@ -2720,6 +2841,7 @@
     replayEventIdx = 0;
     replayFreezeUntil = -1;
     replayFreezeResults = null;
+    previewZoom = null; applyLiveZoom(null); // 6a: replay starts unzoomed
     hideNoteSubtitle();
     video.loop = false;
     video.muted = true;
@@ -2742,18 +2864,22 @@
         replayFreezeUntil = -1; replayFreezeResults = null;
         hideNoteSubtitle();
         clearPreviewStrokes();
+        previewZoom = null; applyLiveZoom(null); // 6a: seek pulls back
         if (currentRole === 'Coach') triggerFrameAnalysis();
       } else {
         exportFreezeUntil = -1; exportFreezeResults = null;
         exportNoteEv = null; exportNoteUntil = -1;
         exportStrokes = [];
+        exportZoom = null; // 6a: seek pulls back
       }
     } else if (ev.type === 'play') {
       if (mode === 'preview') {
         document.getElementById('freezeBanner').style.display = 'none';
         replayFreezeUntil = -1; replayFreezeResults = null;
+        previewZoom = null; applyLiveZoom(null); // 6a: play pulls back
       } else {
         exportFreezeUntil = -1; exportFreezeResults = null;
+        exportZoom = null; // 6a: play pulls back
       }
       video.play().catch(() => {});
     } else if (ev.type === 'pause') {
@@ -2767,6 +2893,19 @@
       // 5b: timeline-driven strokes, same mechanism as note subtitles (5a only recorded them)
       if (mode === 'preview') { previewStrokes.push({ ev, until: tA + STROKE_SHOW_SECS }); previewStrokesDirty = true; }
       else { exportStrokes.push({ ev, until: tA + STROKE_SHOW_SECS }); }
+    } else if (ev.type === 'zoom') {
+      // 6a: timed punch-in — push in on the audio clock, pull back after ZOOM_SHOW_SECS
+      // (or immediately on a mag:0 event, a seek, or a play event)
+      const mag = (typeof ev.mag === 'number' && ZOOM_MAGS.includes(ev.mag)) ? ev.mag : 0;
+      const fx = (typeof ev.fx === 'number') ? Math.min(1, Math.max(0, ev.fx)) : 0.5;
+      const fy = (typeof ev.fy === 'number') ? Math.min(1, Math.max(0, ev.fy)) : 0.5;
+      if (mode === 'preview') {
+        if (mag > 0) { previewZoom = { mag, fx, fy, until: tA + ZOOM_SHOW_SECS }; applyLiveZoom(previewZoom); }
+        else { previewZoom = null; applyLiveZoom(null); }
+      } else {
+        if (mag > 0) exportZoom = { mag, fx, fy, until: tA + ZOOM_SHOW_SECS };
+        else exportZoom = null;
+      }
     } else if (ev.type === 'freeze') {
       video.pause();
       video.currentTime = ev.videoTime;
@@ -2778,10 +2917,12 @@
         document.getElementById('freezeBanner').style.display = 'block';
         replayFreezeUntil = tA + hold;
         replayFreezeResults = results;
+        previewZoom = null; applyLiveZoom(null); // 6a: a new freeze starts unzoomed
         if (results) drawPoseFrame(results);
       } else {
         exportFreezeUntil = tA + hold;
         exportFreezeResults = results;
+        exportZoom = null; // 6a: a new freeze starts unzoomed
       }
     }
   }
@@ -2805,6 +2946,7 @@
     }
     updateNoteSubtitle(tA);
     updatePreviewStrokes(tA); // 5b: timeline-driven telestrator strokes
+    updatePreviewZoom(tA); // 6a: punch-in expires, pull back
     updateDirectProgress(tA / (s.duration || 1));
     replayRaf = requestAnimationFrame(replayTick);
   }
@@ -2816,6 +2958,7 @@
     replaySession = null;
     if (replayAudioEl) { try { replayAudioEl.pause(); } catch (e) {} replayAudioEl = null; }
     clearPreviewStrokes(); // 5b: drop any timeline strokes left on the overlay
+    previewZoom = null; applyLiveZoom(null); // 6a: stop pulls back out of any punch-in
     if (!isExporting) {
       video.pause();
       video.muted = false;
@@ -2853,6 +2996,7 @@
     exportFreezeResults = null;
     exportNoteEv = null; exportNoteUntil = -1;
     exportStrokes = []; // 5b: timeline strokes start empty for each export
+    exportZoom = null; // 6a: export starts unzoomed
     exportChunks = [];
     exportMime = mime;
     video.loop = false;
@@ -2898,6 +3042,7 @@
         exportFreezeResults = null;
       }
     }
+    updateExportZoom(tA); // 6a: punch-in expires, pull back
     drawExportFrame();
     updateDirectProgress(tA / (s.duration || 1));
     exportRaf = requestAnimationFrame(exportTick);
@@ -2906,6 +3051,14 @@
   function drawExportFrame() {
     const stageW = stage.clientWidth, stageH = stage.clientHeight;
     ctx.clearRect(0, 0, stageW, stageH);
+    // 6a: zoom the whole frame (video + skeleton + strokes) around the focus point,
+    // exactly like the live CSS punch-in; the subtitle stays unzoomed below.
+    const zoomed = exportZoom && exportZoom.mag > 0;
+    if (zoomed) {
+      const cx = exportZoom.fx * stageW, cy = exportZoom.fy * stageH;
+      ctx.save();
+      ctx.translate(cx, cy); ctx.scale(exportZoom.mag, exportZoom.mag); ctx.translate(-cx, -cy);
+    }
     if (video.videoWidth) {
       const box = getMediaDisplayBox(video.videoWidth, video.videoHeight, stageW, stageH);
       try { ctx.drawImage(video, box.rx, box.ry, box.rw, box.rh); } catch (e) {}
@@ -2918,8 +3071,9 @@
       if (lm) overlay = { poseLandmarks: lm };
     }
     if (overlay) drawPoseFrame(overlay, false);
+    drawExportStrokes(); // 5b: burn active timeline strokes into the export (inside the zoom)
+    if (zoomed) ctx.restore();
     drawExportSubtitle();
-    drawExportStrokes(); // 5b: burn active timeline strokes into the export
   }
 
   async function finishExportRender() {
@@ -2958,6 +3112,7 @@
     exportStoppedPromise = null;
     exportNoteEv = null; exportNoteUntil = -1;
     exportStrokes = []; // 5b
+    exportZoom = null; // 6a
     video.style.display = 'block';
     video.muted = false;
     document.getElementById('freezeBanner').style.display = 'none';
