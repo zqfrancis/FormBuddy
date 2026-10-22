@@ -333,7 +333,14 @@
   #reportOverlay, #guideOverlay {
     position:fixed; inset:0; z-index:70; overflow-y:auto;
     background:rgba(0,0,0,0.55); padding:24px 12px;
+    /* iOS modal scroll fix: without this, Safari flakily hands the swipe to
+       the page behind instead of the overlay (guide scroll "sometimes works") */
+    -webkit-overflow-scrolling:touch; overscroll-behavior:contain;
   }
+  /* Body scroll lock while a modal overlay is open: the page behind must not
+     move at all, so every swipe belongs to the overlay. Position is restored
+     on close, so the page returns to exactly where it was. */
+  body.modal-open { position:fixed; width:100%; overflow:hidden; }
   /* Coach guide (user manual): same paper card as report, body follows current language */
   #guideOverlay.lang-en .gzh { display:none; }
   #guideOverlay.lang-zh .gen { display:none; }
@@ -374,6 +381,7 @@
     @page { size: A4; margin: 12mm 10mm; }
     body { background:#fff !important; }
     html { background:#fff !important; }
+    body.modal-open { position:static !important; top:auto !important; }
     body > *:not(#reportOverlay) { display:none !important; }
     #reportOverlay {
       position:static !important; background:#fff !important; padding:0 !important;
@@ -2850,6 +2858,7 @@
     if (isRecording || isExporting || isReplaying) return;
     document.getElementById('reportBody').innerHTML = `<div class="report-empty">${escapeHtml(t.reportLoading)}</div>`;
     document.getElementById('reportOverlay').style.display = 'block';
+    lockBodyScroll();
     reportCache = { s: s, snaps: [], notes: [], dateStr: new Date().toISOString().slice(0, 10) };
     let rv = null;
     try { rv = await ensureReportVideo(s) ? reportVideoEl : null; } catch (e) {}
@@ -2872,8 +2881,28 @@
 
   function closeReport() {
     document.getElementById('reportOverlay').style.display = 'none';
+    unlockBodyScroll();
     reportCache = null;
     // main player was never touched (snapshots use the offscreen reportVideoEl), nothing to restore
+  }
+
+  // ---- Modal body scroll lock (guide + report share it) ----
+  // iOS Safari lets a fixed overlay's swipe bleed into the page behind unless
+  // the body is locked; lock remembers the scroll offset and close restores it.
+  let modalScrollY = 0;
+  function lockBodyScroll() {
+    if (document.body.classList.contains('modal-open')) return;
+    modalScrollY = window.scrollY || 0;
+    document.body.classList.add('modal-open');
+    document.body.style.top = '-' + modalScrollY + 'px';
+  }
+  function unlockBodyScroll() {
+    const guideOpen = document.getElementById('guideOverlay').style.display === 'block';
+    const reportOpen = document.getElementById('reportOverlay').style.display === 'block';
+    if (guideOpen || reportOpen) return; // the other overlay still needs the lock
+    document.body.classList.remove('modal-open');
+    document.body.style.top = '';
+    window.scrollTo(0, modalScrollY);
   }
 
   // ---- Coach guide (user manual): same overlay pattern as report ----
@@ -2890,9 +2919,11 @@
   function openGuide() {
     syncGuideLang();
     document.getElementById('guideOverlay').style.display = 'block';
+    lockBodyScroll();
   }
   function closeGuide() {
     document.getElementById('guideOverlay').style.display = 'none';
+    unlockBodyScroll();
   }
 
   function saveReportStudentName() {
