@@ -264,6 +264,25 @@
   body:not(.light-theme) .tpl-chip { border-color:#00ff87; }
   .tpl-chip:active { opacity:0.75; }
   .tpl-chip:disabled { opacity:0.45; cursor:not-allowed; border-color:var(--border-input); }
+  /* ---- Coach four-step guide bar (upload -> record -> replay -> export) ---- */
+  #coachStepsRow { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .coach-step {
+    display:inline-flex; align-items:center; gap:6px; font-size:0.82rem; font-weight:600;
+    padding:6px 12px; border-radius:16px; border:1px solid var(--border-input);
+    background:var(--bg-box); color:var(--text-muted);
+  }
+  .coach-step .coach-step-num {
+    display:inline-flex; align-items:center; justify-content:center;
+    width:20px; height:20px; border-radius:50%; font-size:0.75rem;
+    background:var(--border-input); color:var(--text-main); flex-shrink:0;
+  }
+  .coach-step.done { border-color:#00b359; color:var(--text-main); }
+  .coach-step.done .coach-step-num { background:#00b359; color:#fff; }
+  .coach-step.active { border-color:#00ff87; background:rgba(0,255,135,0.12); color:var(--text-main); box-shadow:0 0 0 1px #00ff87 inset; }
+  .coach-step.active .coach-step-num { background:#00ff87; color:#000; }
+  .coach-step-arrow { color:var(--text-muted); font-size:0.85rem; }
+  #coachStepsHint { margin-top:6px; font-size:0.78rem; color:var(--text-muted); }
+  #coachRecordBtn:disabled { opacity:0.45; cursor:not-allowed; }
   /* ---- Custom templates (3c) ---- */
   #tplManage { margin-top:14px; border-top:1px dashed var(--border-input); padding-top:10px; }
   #tplManage h4 { margin:0 0 6px 0; font-size:0.85rem; color:var(--text-main); }
@@ -440,6 +459,19 @@
       <video id="videoPlayer" crossorigin="anonymous" loop playsinline webkit-playsinline style="display:none;"></video>
       <canvas id="overlayCanvas"></canvas>
       <div id="noteSubtitle"></div>
+    </div>
+
+    <div id="coachSteps" style="display:none; width:100%; max-width:1000px; margin-top:12px;">
+      <div id="coachStepsRow">
+        <span class="coach-step" id="coachStep1"><span class="coach-step-num">1</span><span id="coachStep1Label">📤 上传</span></span>
+        <span class="coach-step-arrow">→</span>
+        <span class="coach-step" id="coachStep2"><span class="coach-step-num">2</span><span id="coachStep2Label">🎙️ 录制</span></span>
+        <span class="coach-step-arrow">→</span>
+        <span class="coach-step" id="coachStep3"><span class="coach-step-num">3</span><span id="coachStep3Label">▶️ 回放</span></span>
+        <span class="coach-step-arrow">→</span>
+        <span class="coach-step" id="coachStep4"><span class="coach-step-num">4</span><span id="coachStep4Label">⬇️ 导出</span></span>
+      </div>
+      <div id="coachStepsHint"></div>
     </div>
 
     <div id="controls">
@@ -744,6 +776,15 @@
       zoomNeedPause: "请先暂停视频再设特写",
       zoomTapHint: "点画面选特写焦点",
       zoomFocusSet: "特写焦点已设定",
+      stepUpload: "📤 上传",
+      stepRecord: "🎙️ 录制",
+      stepReplay: "▶️ 回放",
+      stepExport: "⬇️ 导出",
+      stepHintUpload: "先上传一段训练视频，才能开始录制",
+      stepHintRecord: "点“🎙️ 录制语音点评”开始导播录制",
+      stepHintReplay: "录制已保存，点同步回放检查效果",
+      stepHintExport: "回放满意后，导出带点评的视频",
+      stepHintDone: "✅ 四步都完成了，可以再录一段或导出给学员",
       reportLoading: "正在生成报告，请稍候…",
       reportAngleL: "左膝",
       reportAngleR: "右膝",
@@ -890,6 +931,15 @@
       zoomNeedPause: "Pause the video before setting a zoom",
       zoomTapHint: "Tap the frame to set the zoom focus",
       zoomFocusSet: "Zoom focus set",
+      stepUpload: "📤 Upload",
+      stepRecord: "🎙️ Record",
+      stepReplay: "▶️ Replay",
+      stepExport: "⬇️ Export",
+      stepHintUpload: "Upload a training video first to start recording",
+      stepHintRecord: "Tap “Record Audio” to start a directed session",
+      stepHintReplay: "Recording saved — preview it to check the result",
+      stepHintExport: "Happy with the preview? Export the video with feedback",
+      stepHintDone: "✅ All four steps done — record another or share the export",
       reportLoading: "Generating report, please wait…",
       reportAngleL: "Left knee",
       reportAngleR: "Right knee",
@@ -1672,6 +1722,7 @@
       freezePoints = [];
       renderTimelinePoints();
       renderSidebarCards();
+      syncCoachSteps(); // guide bar: a real video completes step 1
       clearLiveZoom(); syncZoomUI(); // 6a: a new video starts unzoomed
     }
   }
@@ -2316,6 +2367,7 @@
     document.getElementById('penDurLabel').innerText = t.penDurLabel; // 5b
     syncPenTools(); // 5c: refresh undo/clear labels + width options for the new language
     syncZoomUI(); // 6a: refresh zoom label + off-option for the new language
+    syncCoachSteps(); // guide bar: re-render step labels + hint in the new language
 
     document.getElementById('playFeedbackBtn').innerText = t.btnPlayAudio;
     document.getElementById('lblTimelineHeader').innerText = t.lblTimelineHeader;
@@ -2359,6 +2411,61 @@
     if (ns && activeNoteEv) ns.innerText = noteText(activeNoteEv);
   }
 
+  // ---- Coach four-step guide bar (small improvement): upload -> record -> replay -> export ----
+  // Step state is derived, never stored, so it can never go stale: step 1 is
+  // done once a real (non-demo) video is loaded, step 2 once a session exists,
+  // step 3 once a session has been previewed, step 4 once an export finished.
+  // Recording / replaying / exporting highlights its own step. The flags below
+  // only track this page load; a reload re-derives from video + sessions.
+  let coachHasReplayed = false; // set when a preview starts
+  let coachHasExported = false; // set when an export finishes successfully
+  function hasCoachVideo() { return !isDemoMode; }
+  function coachStepState() {
+    if (!hasCoachVideo()) return { current: 1, done: [] };
+    const done = [1];
+    if (sessions.length > 0) done.push(2);
+    if (coachHasReplayed) done.push(3);
+    if (coachHasExported) done.push(4);
+    if (isRecording) return { current: 2, done };
+    if (isReplaying) return { current: 3, done };
+    if (isExporting) return { current: 4, done };
+    if (sessions.length === 0) return { current: 2, done };
+    if (!coachHasReplayed) return { current: 3, done };
+    if (!coachHasExported) return { current: 4, done };
+    return { current: 4, done };
+  }
+  function syncCoachSteps() {
+    const bar = document.getElementById('coachSteps');
+    if (!bar) return;
+    const t = i18n[currentLang];
+    bar.style.display = currentRole === 'Coach' ? 'block' : 'none';
+    const st = coachStepState();
+    for (let i = 1; i <= 4; i++) {
+      const el = document.getElementById('coachStep' + i);
+      if (!el) continue;
+      el.classList.toggle('done', st.done.includes(i));
+      el.classList.toggle('active', st.current === i);
+      const num = el.querySelector('.coach-step-num');
+      if (num) num.innerText = st.done.includes(i) ? '✓' : String(i);
+    }
+    document.getElementById('coachStep1Label').innerText = t.stepUpload;
+    document.getElementById('coachStep2Label').innerText = t.stepRecord;
+    document.getElementById('coachStep3Label').innerText = t.stepReplay;
+    document.getElementById('coachStep4Label').innerText = t.stepExport;
+    const hint = document.getElementById('coachStepsHint');
+    if (hint) {
+      hint.innerText = st.current === 1 ? t.stepHintUpload
+        : st.current === 2 ? t.stepHintRecord
+        : st.current === 3 ? t.stepHintReplay
+        : (st.done.includes(4) ? t.stepHintDone : t.stepHintExport);
+    }
+    const recordBtn = document.getElementById('coachRecordBtn');
+    if (recordBtn) {
+      recordBtn.disabled = !hasCoachVideo();
+      recordBtn.title = hasCoachVideo() ? '' : t.stepHintUpload;
+    }
+  }
+
   function switchRole(role) {
     currentRole = role;
     const isCoach = role === 'Coach';
@@ -2375,6 +2482,7 @@
     syncPenDurUI(); // 5b: stroke display-duration setting visible in coach view
     syncPenTools(); // 5c: pen color/width/undo/clear strip visibility
     syncZoomUI(); // 6a: zoom select visible in coach view
+    syncCoachSteps(); // guide bar: coach-only, state re-derived on role switch
     document.getElementById('timeline-points').style.display = isCoach ? 'block' : 'none';
 
     document.getElementById('secLayerSettings').style.display = isCoach ? 'block' : 'none';
@@ -2399,6 +2507,7 @@
     const btn = document.getElementById('coachRecordBtn');
     const t = i18n[currentLang];
     if (!isRecording) {
+      if (!hasCoachVideo()) { showNoteToast(t.stepHintUpload); return; }
       if (isDemoMode) { alert(t.alertDemoCapture); return; }
       if (isReplaying) stopReplay();
       try {
@@ -2429,6 +2538,7 @@
         renderTemplateChips();
         syncPenButton(); // 5a: pen available while recording
         recTickTimer = setInterval(updateRecOverlay, 500);
+        syncCoachSteps(); // guide bar: recording highlights step 2
         updateStatus('statusRecording');
       } catch (err) {
         isRecording = false;
@@ -2448,6 +2558,7 @@
       clearLiveZoom(); syncZoomUI(); // 6a: recording end pulls back out of any punch-in
       syncPenButton();
       syncPenTools(); // 5c: hide the pen tools strip
+      syncCoachSteps(); // guide bar: saved session completes step 2, step 3 goes active
     }
   }
 
@@ -2554,6 +2665,7 @@
     const t = i18n[currentLang];
     if (sessions.length === 0) {
       box.innerHTML = `<div>${t.sessionEmpty}</div>`;
+      syncCoachSteps(); // guide bar: session count changed (saved / deleted / loaded)
       return;
     }
     box.innerHTML = sessions.map(s => {
@@ -2571,6 +2683,7 @@
         </div>
       </div>`;
     }).join('');
+    syncCoachSteps(); // guide bar: session count changed (saved / deleted / loaded)
   }
 
   async function deleteSession(id) {
@@ -2825,6 +2938,7 @@
       freezePoints = [];
       renderTimelinePoints();
       renderSidebarCards();
+      syncCoachSteps(); // guide bar: session video loaded, step 1 done
     }
   }
 
@@ -2837,6 +2951,8 @@
     stopReplay();
     await ensureSessionVideo(s);
     isReplaying = true;
+    coachHasReplayed = true; // guide bar: preview done, step 3 completes
+    syncCoachSteps(); // guide bar: replay highlights step 3
     replaySession = s;
     replayEventIdx = 0;
     replayFreezeUntil = -1;
@@ -2966,6 +3082,7 @@
       hideNoteSubtitle();
       hideDirectOverlay();
     }
+    syncCoachSteps(); // guide bar: replay ended, step 4 goes active
   }
 
   // ---- Export to video file ----
@@ -2989,6 +3106,7 @@
     await ensureSessionVideo(s);
 
     isExporting = true;
+    syncCoachSteps(); // guide bar: export highlights step 4
     exportCancelled = false;
     exportingSession = s;
     exportEventIdx = 0;
@@ -3084,7 +3202,9 @@
     if (exportStoppedPromise) await exportStoppedPromise;
     const chunks = exportChunks, mime = exportMime, s = exportingSession, cancelled = exportCancelled;
     const t = i18n[currentLang];
+    if (!cancelled && chunks.length > 0) coachHasExported = true; // guide bar: step 4 done
     cleanupExportState();
+    syncCoachSteps(); // guide bar: export finished, all four steps done
     if (!cancelled && chunks.length > 0) {
       const ext = mime.includes('mp4') ? 'mp4' : 'webm';
       const blob = new Blob(chunks, { type: mime });
