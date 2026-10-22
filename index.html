@@ -330,10 +330,14 @@
   @keyframes blink { 50% { opacity:0.25; } }
   #directStopBtn { background:#ff4757 !important; border:none !important; color:#fff !important; border-radius:16px; padding:6px 12px !important; }
   /* ---- Report view (4a): paper-style training report ---- */
-  #reportOverlay {
+  #reportOverlay, #guideOverlay {
     position:fixed; inset:0; z-index:70; overflow-y:auto;
     background:rgba(0,0,0,0.55); padding:24px 12px;
   }
+  /* Coach guide (user manual): same paper card as report, bilingual body */
+  .guide-en { color:#555; font-size:0.88rem; }
+  .guide-page ul { padding-left:20px; margin:8px 0; }
+  .guide-page li { margin-bottom:8px; }
   .report-page {
     max-width:720px; margin:0 auto; background:#ffffff; color:#111;
     border-radius:10px; padding:24px 22px; box-shadow:0 8px 32px rgba(0,0,0,0.4);
@@ -557,6 +561,7 @@
     </div>
 
     <div id="coachPanel" class="panel-section" style="display:none;">
+      <button id="btnGuide" style="width:100%; margin-bottom:10px;" onclick="openGuide()">📖 Coach Guide</button>
       <h3 id="titleSubmissions">📋 Student Submissions</h3>
       <select id="submissionSelect" style="width:100%">
         <option value="" id="optSubmissionItem">-- None (Waiting for Student Submission) --</option>
@@ -612,6 +617,33 @@
 <div id="reportOverlay" style="display:none;">
   <div class="report-page">
     <div id="reportBody"></div>
+  </div>
+</div>
+<div id="guideOverlay" style="display:none;">
+  <div class="report-page guide-page">
+    <div class="report-head"><h2>📖 教练使用说明<span class="en">Coach Guide</span></h2><button onclick="closeGuide()">✕ 关闭 / Close</button></div>
+    <div id="guideBody">
+      <p>FormBuddy 是本机动作分析工具：视频、语音点评和录制都只保存在这台设备的浏览器里，不上传服务器，换设备不会同步。<br><span class="guide-en">FormBuddy analyzes locally: videos, voice feedback and sessions stay in this browser and are never uploaded, so they don't sync across devices.</span></p>
+      <h3>1. 上传视频 <span class="en">Upload</span></h3>
+      <p>学员在学员视图上传一段 15–20 秒的训练视频；教练在教练视图的「学员提交列表」里打开，或自己直接上传。<br><span class="guide-en">Students upload a 15–20s training video in Student view; coaches open it from the submission list in Coach view, or upload one directly.</span></p>
+      <h3>2. 录制语音点评 <span class="en">Record</span></h3>
+      <p>点 🎙️ 录制语音点评，边播放边讲；讲到关键处暂停，点 📌 抓取定格分析，骨骼力线和关节角度自动标在画面上。<br><span class="guide-en">Tap Record and talk while the video plays. Pause at a key moment and tap Freeze to mark the frame — skeleton lines and joint angles appear automatically.</span></p>
+      <h3>3. 圈画和特写 <span class="en">Annotate</span></h3>
+      <p>定格时点 ✏️ 画笔，在画面上圈出重点（黄 / 红 / 蓝 / 绿四色）；点 🔍 特写放大关键部位，点画面可以移动焦点。<br><span class="guide-en">On a frozen frame, use the pen to circle key points (yellow / red / blue / green), and Zoom to magnify the key area — tap the frame to move the focus.</span></p>
+      <h3>4. 快捷点评 <span class="en">Templates</span></h3>
+      <p>录制中点 💬 点评模板，一键插入常用点评（站姿 / 步法 / 拳法 / 踢法 / 防守），也可以在「自定义模板」里加自己的常用语。<br><span class="guide-en">During recording, tap a feedback template to insert a common comment instantly (stance / footwork / punch / kick / defense), or add your own in Custom Templates.</span></p>
+      <h3>5. 回放检查 <span class="en">Replay</span></h3>
+      <p>点 ▶️ 同步回放，检查语音、字幕、圈画和特写是不是和动作对得上，再决定要不要重录。<br><span class="guide-en">Tap Play to replay and check that voice, subtitles, annotations and zooms line up with the movement before finalizing.</span></p>
+      <h3>6. 导出和报告 <span class="en">Export &amp; report</span></h3>
+      <p>点 ⬇️ 导出视频，把带语音和标注的视频发给学员；点 📄 报告，看冻结帧截图、角度数据和点评清单，还能一键打印 / 存 PDF。<br><span class="guide-en">Tap Export to send the annotated video with voice to the student; tap Report for freeze-frame snapshots, angle data and the comment list, printable to PDF.</span></p>
+      <h3>💡 小提示 <span class="en">Tips</span></h3>
+      <ul>
+        <li>录制时视频静音是故意的，防止声音串进麦克风；回放和导出时声音正常。<br><span class="guide-en">Video is muted during recording on purpose to avoid mic bleed; sound returns in replay and export.</span></li>
+        <li>拍 15–20 秒、光线好、能看到全身的视频，分析最准。<br><span class="guide-en">Best results: 15–20s, well-lit, full-body videos.</span></li>
+        <li>每次录制完先回放一遍，确认无误再导出给学员。<br><span class="guide-en">Always replay once before exporting to the student.</span></li>
+      </ul>
+    </div>
+    <div class="report-actions"><button onclick="closeGuide()">✕ 关闭 / Close</button></div>
   </div>
 </div>
 <div id="directOverlay">
@@ -735,6 +767,7 @@
       tplDelConfirm: "确定删除这条模板？",
       tplDelYes: "确认删除",
       btnReport: "📄 报告",
+      btnGuide: "📖 教练使用说明",
       reportTitle: "📄 训练报告",
       reportTitleEn: "Training Report",
       reportStudent: "学员姓名",
@@ -890,6 +923,7 @@
       tplDelConfirm: "Delete this template?",
       tplDelYes: "Delete",
       btnReport: "📄 Report",
+      btnGuide: "📖 Coach Guide",
       reportTitle: "📄 Training Report",
       reportTitleEn: "训练报告",
       reportStudent: "Student name",
@@ -2377,6 +2411,7 @@
     document.getElementById('titleReviewedList').innerText = t.titleReviewedList;
     document.getElementById('reviewedList').innerText = t.emptyReviewed;
     document.getElementById('titleSubmissions').innerText = t.titleSubmissions;
+    document.getElementById('btnGuide').innerText = t.btnGuide;
     document.getElementById('holdLabel').innerText = t.holdLabel;
     document.getElementById('titleSessions').innerText = t.titleSessions;
     document.getElementById('titleTemplates').innerText = t.titleTemplates;
@@ -2832,6 +2867,14 @@
     document.getElementById('reportOverlay').style.display = 'none';
     reportCache = null;
     // main player was never touched (snapshots use the offscreen reportVideoEl), nothing to restore
+  }
+
+  // ---- Coach guide (user manual): same overlay pattern as report ----
+  function openGuide() {
+    document.getElementById('guideOverlay').style.display = 'block';
+  }
+  function closeGuide() {
+    document.getElementById('guideOverlay').style.display = 'none';
   }
 
   function saveReportStudentName() {
