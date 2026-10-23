@@ -321,7 +321,9 @@
     background: rgba(10,10,10,0.92); color:#fff; border:1px solid #00ff87; border-radius:24px;
     padding:8px 14px; display:none; align-items:center; gap:10px; font-size:0.85rem; font-weight:600;
     box-shadow: 0 4px 16px rgba(0,0,0,0.5); max-width:92vw;
+    flex-wrap:wrap; justify-content:center;
   }
+  #directMuteNote { display:none; flex-basis:100%; text-align:center; font-size:0.72rem; font-weight:400; opacity:0.85; }
   body.light-theme #directOverlay { background: rgba(255,255,255,0.95); color:#111; }
   #directOverlay .direct-progress { width:110px; height:6px; background:#333; border-radius:3px; overflow:hidden; }
   #directOverlay .direct-progress > div { height:100%; width:0%; background:#00ff87; }
@@ -663,6 +665,7 @@
   <span id="directOverlayText"></span>
   <span class="direct-progress"><div id="directProgressFill"></div></span>
   <button id="directStopBtn" onclick="stopDirectMode()">⏹</button>
+  <span id="directMuteNote"></span>
 </div>
 
 <script>
@@ -747,6 +750,7 @@
       confirmDeleteSession: "确定删除这条录制吗？",
       videoTip: "💡 建议上传 15–20 秒的视频。",
       recOn: "🔴 录制中",
+      recMuteNote: "🔇 录制时视频静音是故意的，防止声音串进麦克风",
       replaying: "▶️ 同步回放中",
       exporting: "⬇️ 导出中，请勿切换标签页",
       exportDone: "✅ 导出完成，已开始下载",
@@ -904,6 +908,7 @@
       confirmDeleteSession: "Delete this session?",
       videoTip: "💡 Tip: 15–20s videos work best.",
       recOn: "🔴 REC",
+      recMuteNote: "🔇 Video muted during recording to avoid mic bleed",
       replaying: "▶️ Replaying",
       exporting: "⬇️ Exporting, keep this tab open",
       exportDone: "✅ Export done, download started",
@@ -2416,6 +2421,8 @@
     syncPenTools(); // 5c: refresh undo/clear labels + width options for the new language
     syncZoomUI(); // 6a: refresh zoom label + off-option for the new language
     syncCoachSteps(); // guide bar: re-render step labels + hint in the new language
+    if (isRecording) updateRecOverlay(); // rec bar text follows the new language
+    syncMuteNote(); // recording mute note follows the new language / visibility
 
     document.getElementById('playFeedbackBtn').innerText = t.btnPlayAudio;
     document.getElementById('lblTimelineHeader').innerText = t.lblTimelineHeader;
@@ -3339,6 +3346,14 @@
   }
 
   // ---- Direct overlay UI ----
+  // Recording mute note: video is muted on purpose during recording (no mic
+  // bleed). Shown as a second line of the floating bar, only while recording.
+  function syncMuteNote() {
+    const el = document.getElementById('directMuteNote');
+    if (!el) return;
+    el.innerText = i18n[currentLang].recMuteNote;
+    el.style.display = isRecording ? 'block' : 'none';
+  }
   function showDirectOverlay(mode) {
     const ov = document.getElementById('directOverlay');
     const dot = document.getElementById('directRecDot');
@@ -3349,10 +3364,12 @@
     updateDirectProgress(0);
     if (mode === 'rec') updateRecOverlay();
     else document.getElementById('directOverlayText').innerText = mode === 'replay' ? t.replaying : t.exporting;
+    syncMuteNote();
   }
   function updateRecOverlay() {
     if (!isRecording) return;
     document.getElementById('directOverlayText').innerText = `${i18n[currentLang].recOn} ${formatTime(recClock())}`;
+    syncMuteNote();
   }
   function updateDirectProgress(frac) {
     const f = Math.max(0, Math.min(1, frac || 0));
@@ -3360,6 +3377,8 @@
   }
   function hideDirectOverlay() {
     document.getElementById('directOverlay').style.display = 'none';
+    const mn = document.getElementById('directMuteNote');
+    if (mn) mn.style.display = 'none';
   }
   function stopDirectMode() {
     if (isRecording) { toggleRecording(); return; }
