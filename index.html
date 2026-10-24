@@ -167,6 +167,9 @@
     display: flex; flex-direction: column; gap: 10px; align-items: center;
   }
   .control-row { display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; width: 100%; }
+  /* Control groups: playback / freeze / record / annotate. On desktop they sit
+     inline in one row; on mobile each group becomes its own full-width row. */
+  .control-group { display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; }
   
   .seeker-box {
     width: 100%; display: flex; align-items: center; gap: 10px;
@@ -431,7 +434,12 @@
       padding-bottom: 30px;
     }
     .video-wrapper { height: 42vh; min-height: 250px; }
-    .control-row button { flex: 1; min-width: 130px; padding: 10px 8px; font-size: 0.82rem; }
+    .control-row { flex-direction: column; align-items: stretch; gap: 12px; }
+    .control-group { width: 100%; justify-content: stretch; }
+    .control-group button:not([data-color]) { flex: 1; min-height: 44px; padding: 12px 10px; font-size: 0.85rem; }
+    .control-group select { flex: 1; min-height: 44px; font-size: 0.85rem; }
+    #penColorsWrap button { width: 32px !important; height: 32px !important; }
+    .seeker-box input[type="range"] { height: 32px; }
     header h1 { font-size: 1rem; }
   }
 </style>
@@ -501,48 +509,56 @@
       </div>
 
       <div class="control-row">
-        <button id="btnPlayPause" onclick="togglePlay()">⏯️ Play / Pause</button>
-        <button id="btnCapture" style="display:none; background:#00ff87 !important; color:#000 !important; border:none !important;" onclick="freezeAndAnalyze()">📌 Freeze Frame and Analyze</button>
-        <span id="freezeHoldWrap" style="display:none; align-items:center; gap:6px; font-size:0.85rem; font-weight:600;">
-          <span id="holdLabel">Hold:</span>
-          <select id="freezeHoldSelect" style="padding:6px 8px;">
-            <option value="3">3s</option>
-            <option value="5" selected>5s</option>
-            <option value="10">10s</option>
-            <option value="15">15s</option>
-          </select>
-        </span>
-        <button id="coachRecordBtn" style="display:none; background:#ff4757 !important; color:#fff !important; border:none !important;" onclick="toggleRecording()">🎙️ Record Audio</button>
-        <button id="btnPen" style="display:none;" onclick="togglePenMode()">✏️ 画笔</button>
-        <span id="penToolsWrap" style="display:none; align-items:center; gap:6px; flex-wrap:wrap;">
-          <span id="penColorsWrap" style="display:inline-flex; align-items:center; gap:4px;"></span>
-          <select id="penWidthSelect" style="padding:6px 8px;" onchange="setPenWidth(this.value)">
-            <option value="3">细</option>
-            <option value="5" selected>中</option>
-            <option value="8">粗</option>
-          </select>
-          <button id="btnPenUndo" onclick="undoTeleStroke()">↩️ 撤销</button>
-          <button id="btnPenClear" onclick="clearPenFrame()">🗑️ 清空</button>
-        </span>
-        <span id="penDurWrap" style="display:none; align-items:center; gap:6px; font-size:0.85rem; font-weight:600;">
-          <span id="penDurLabel">✏️ 显示时长</span>
-          <select id="penDurSelect" style="padding:6px 8px;" onchange="setStrokeSecs(this.value)">
-            <option value="2">2s</option>
-            <option value="3.5" selected>3.5s</option>
-            <option value="5">5s</option>
-            <option value="8">8s</option>
-          </select>
-        </span>
-        <span id="zoomWrap" style="display:none; align-items:center; gap:6px; font-size:0.85rem; font-weight:600;">
-          <span id="zoomLabel">🔍 特写</span>
-          <select id="zoomSelect" style="padding:6px 8px;" onchange="setZoomMag(this.value)">
-            <option value="0">关闭</option>
-            <option value="1.5">1.5×</option>
-            <option value="2">2×</option>
-            <option value="3">3×</option>
-          </select>
-        </span>
-        <button id="playFeedbackBtn" style="display:none;" onclick="playFeedback()">▶️ Play Audio</button>
+        <div class="control-group" id="grpPlayback">
+          <button id="btnPlayPause" onclick="togglePlay()">⏯️ Play / Pause</button>
+          <button id="playFeedbackBtn" style="display:none;" onclick="playFeedback()">▶️ Play Audio</button>
+        </div>
+        <div class="control-group" id="grpFreeze">
+          <button id="btnCapture" style="display:none; background:#00ff87 !important; color:#000 !important; border:none !important;" onclick="freezeAndAnalyze()">📌 Freeze Frame and Analyze</button>
+          <span id="freezeHoldWrap" style="display:none; align-items:center; gap:6px; font-size:0.85rem; font-weight:600;">
+            <span id="holdLabel">Hold:</span>
+            <select id="freezeHoldSelect" style="padding:6px 8px;">
+              <option value="3">3s</option>
+              <option value="5" selected>5s</option>
+              <option value="10">10s</option>
+              <option value="15">15s</option>
+            </select>
+          </span>
+        </div>
+        <div class="control-group" id="grpRecord">
+          <button id="coachRecordBtn" style="display:none; background:#ff4757 !important; color:#fff !important; border:none !important;" onclick="toggleRecording()">🎙️ Record Audio</button>
+        </div>
+        <div class="control-group" id="grpAnnotate">
+          <button id="btnPen" style="display:none;" onclick="togglePenMode()">✏️ 画笔</button>
+          <span id="penToolsWrap" style="display:none; align-items:center; gap:6px; flex-wrap:wrap;">
+            <span id="penColorsWrap" style="display:inline-flex; align-items:center; gap:4px;"></span>
+            <select id="penWidthSelect" style="padding:6px 8px;" onchange="setPenWidth(this.value)">
+              <option value="3">细</option>
+              <option value="5" selected>中</option>
+              <option value="8">粗</option>
+            </select>
+            <button id="btnPenUndo" onclick="undoTeleStroke()">↩️ 撤销</button>
+            <button id="btnPenClear" onclick="clearPenFrame()">🗑️ 清空</button>
+          </span>
+          <span id="penDurWrap" style="display:none; align-items:center; gap:6px; font-size:0.85rem; font-weight:600;">
+            <span id="penDurLabel">✏️ 显示时长</span>
+            <select id="penDurSelect" style="padding:6px 8px;" onchange="setStrokeSecs(this.value)">
+              <option value="2">2s</option>
+              <option value="3.5" selected>3.5s</option>
+              <option value="5">5s</option>
+              <option value="8">8s</option>
+            </select>
+          </span>
+          <span id="zoomWrap" style="display:none; align-items:center; gap:6px; font-size:0.85rem; font-weight:600;">
+            <span id="zoomLabel">🔍 特写</span>
+            <select id="zoomSelect" style="padding:6px 8px;" onchange="setZoomMag(this.value)">
+              <option value="0">关闭</option>
+              <option value="1.5">1.5×</option>
+              <option value="2">2×</option>
+              <option value="3">3×</option>
+            </select>
+          </span>
+        </div>
       </div>
     </div>
 
