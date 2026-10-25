@@ -177,6 +177,8 @@
     transition: background-color 0.3s ease, border-color 0.3s ease;
   }
   .seeker-box input[type="range"] { flex: 1; height: 24px; cursor: pointer; accent-color: #00ff87; }
+  /* Fine-seek step buttons: numeric labels are language-neutral, never shrink away */
+  .seeker-box button { flex-shrink: 0; white-space: nowrap; }
 
   #timeline-points {
     width: 100%; max-width: 1000px; margin-top: 12px;
@@ -440,6 +442,7 @@
     .control-group select { flex: 1; min-height: 44px; font-size: 0.85rem; }
     #penColorsWrap button { width: 32px !important; height: 32px !important; }
     .seeker-box input[type="range"] { height: 32px; }
+    .seeker-box button { min-height: 44px; }
     header h1 { font-size: 1rem; }
   }
 </style>
@@ -504,7 +507,9 @@
     <div id="controls">
       <div class="seeker-box">
         <span style="font-size:0.8rem; color:var(--text-muted);" id="lblTimeFine">Seek: </span>
+        <button id="btnSeekBack" title="微调 −0.5 秒 / Fine step −0.5s" onclick="fineSeek(-0.5)">⏪ −0.5s</button>
         <input type="range" id="videoSeeker" min="0" value="0" step="0.01" oninput="onSeekInput(this.value)" onchange="onSeekChange(this.value)" />
+        <button id="btnSeekFwd" title="微调 +0.5 秒 / Fine step +0.5s" onclick="fineSeek(0.5)">+0.5s ⏩</button>
         <span id="timeDisplay" style="font-size:0.85rem; font-family:monospace; color:var(--text-main);">00:00.0</span>
       </div>
 
@@ -1836,6 +1841,24 @@
     if (currentRole === 'Coach') {
       triggerFrameAnalysis();
     }
+  }
+
+  // Seeker fine-step (small improvement): nudge exactly 0.5s either way so a
+  // freeze frame can be landed precisely. Pauses first (like dragging the
+  // slider), clamps to [0, duration], and logs a seek event so a directed
+  // recording replays the same nudge. The 'seeked' handler re-runs frame
+  // analysis for a paused Coach view, so no extra analysis call is needed.
+  const FINE_SEEK_STEP = 0.5;
+  function fineSeek(delta) {
+    if (isDemoMode) return;
+    video.pause();
+    const dur = Number.isFinite(video.duration) ? video.duration : 0;
+    let next = (video.currentTime || 0) + delta;
+    if (next < 0) next = 0;
+    if (dur > 0 && next > dur) next = dur;
+    video.currentTime = next;
+    updateSeekerUI();
+    logRecEvent({ type: 'seek', videoTime: r2(next) });
   }
 
   async function triggerFrameAnalysis() {
