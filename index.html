@@ -154,12 +154,15 @@
     cursor: move; 
   }
 
+  /* Freeze banner (small improvement): an in-flow bar BELOW the video, never an
+     overlay on it — the old top-absolute pill covered the top of the frame
+     (head/upper body) for the whole freeze. It stays visible while frozen so
+     the freeze time is never lost; it costs no picture area. */
   #freezeBanner {
-    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
     background: rgba(255, 0, 85, 0.9); color: #fff; padding: 6px 16px;
-    border-radius: 20px; font-weight: bold; font-size: 0.85rem; z-index: 10;
+    border-radius: 20px; font-weight: bold; font-size: 0.85rem;
     display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.5); border: 1px solid #ffffff;
-    white-space: nowrap;
+    white-space: nowrap; margin-top: 10px; max-width: 1000px;
   }
   
   #controls {
@@ -482,13 +485,13 @@
 
 <div id="app">
   <div id="player-container">
-    <div id="freezeBanner"><span id="lblFreezePoint">⏸️ Freeze Point: </span><span id="freezeTime">00:01.4</span></div>
-
     <div class="video-wrapper" id="stage">
       <video id="videoPlayer" crossorigin="anonymous" loop playsinline webkit-playsinline style="display:none;"></video>
       <canvas id="overlayCanvas"></canvas>
       <div id="noteSubtitle"></div>
     </div>
+
+    <div id="freezeBanner"><span id="lblFreezePoint">⏸️ Freeze Point: </span><span id="freezeTime">00:01.4</span></div>
 
     <div id="coachSteps" style="display:none; width:100%; max-width:1000px; margin-top:12px;">
       <button id="btnGuide" style="width:100%; margin-bottom:8px;" onclick="openGuide()">📖 Coach Guide</button>
