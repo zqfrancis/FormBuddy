@@ -3335,6 +3335,14 @@
     drawExportSubtitle();
   }
 
+  // Export filename (small improvement): pure timestamp, no video/student name,
+  // so Chinese or special characters can never garble on phones.
+  // Format: FormBuddy-YYYYMMDD-HHmm.<ext>, local time, zero-padded.
+  function exportFileName(ext, d = new Date()) {
+    const p = (n) => String(n).padStart(2, '0');
+    return `FormBuddy-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}.${ext}`;
+  }
+
   async function finishExportRender() {
     if (!isExporting) return;
     if (exportRaf) cancelAnimationFrame(exportRaf);
@@ -3351,9 +3359,8 @@
       const blob = new Blob(chunks, { type: mime });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      const safeName = String(s.videoName || 'formbuddy').replace(/[^\w\-]+/g, '_').slice(0, 40);
       a.href = url;
-      a.download = `FormBuddy-feedback-${safeName}.${ext}`;
+      a.download = exportFileName(ext);
       document.body.appendChild(a);
       a.click();
       setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 4000);
