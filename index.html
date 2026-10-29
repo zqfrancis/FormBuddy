@@ -780,6 +780,7 @@
       btnExport: "⬇️ 导出视频",
       btnDeleteSession: "删除",
       confirmDeleteSession: "确定删除这条录制吗？",
+      sessionDelYes: "确认删除",
       videoTip: "💡 建议上传 15–20 秒的视频。",
       recOn: "🔴 录制中",
       recMuteNote: "🔇 录制时视频静音是故意的，防止声音串进麦克风",
@@ -938,6 +939,7 @@
       btnExport: "⬇️ Export Video",
       btnDeleteSession: "Delete",
       confirmDeleteSession: "Delete this session?",
+      sessionDelYes: "Confirm delete",
       videoTip: "💡 Tip: 15–20s videos work best.",
       recOn: "🔴 REC",
       recMuteNote: "🔇 Video muted during recording to avoid mic bleed",
@@ -2766,6 +2768,10 @@
     return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
+  // Session delete uses the same two-tap in-page confirm as template delete (3c):
+  // first tap arms this card, second tap actually deletes — no blocking dialog.
+  let deletingSessionId = null;
+
   function renderSessionList() {
     const box = document.getElementById('sessionList');
     if (!box) return;
@@ -2778,6 +2784,7 @@
     box.innerHTML = sessions.map(s => {
       const d = new Date(s.createdAt);
       const dateStr = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      const arming = deletingSessionId === s.id;
       return `
       <div class="session-card">
         <div class="s-title">🎬 ${escapeHtml(s.videoName)}</div>
@@ -2786,16 +2793,26 @@
           <button onclick="previewSession(${s.id})">${t.btnPreview}</button>
           <button onclick="exportSession(${s.id})">${t.btnExport}</button>
           <button onclick="reportSession(${s.id})">${t.btnReport}</button>
-          <button onclick="deleteSession(${s.id})" style="color:#ff4757 !important;">✕</button>
+          ${arming
+            ? `<span style="color:#ff4757; font-weight:700; font-size:0.75rem;">${t.confirmDeleteSession}</span>
+               <button onclick="deleteSession(${s.id})" style="color:#ff4757 !important;">${t.sessionDelYes}</button>
+               <button onclick="cancelSessionDelete()">${t.tplCancel}</button>`
+            : `<button onclick="deleteSession(${s.id})" style="color:#ff4757 !important;">✕</button>`}
         </div>
       </div>`;
     }).join('');
     syncCoachSteps(); // guide bar: session count changed (saved / deleted / loaded)
   }
 
+  function cancelSessionDelete() {
+    deletingSessionId = null;
+    renderSessionList();
+  }
+
   async function deleteSession(id) {
-    const t = i18n[currentLang];
-    if (!confirm(t.confirmDeleteSession)) return;
+    // Two-tap in-page confirm: first tap arms, second tap deletes (no blocking dialogs).
+    if (deletingSessionId !== id) { deletingSessionId = id; renderSessionList(); return; }
+    deletingSessionId = null;
     try { await idbDel(id); } catch (e) {}
     sessions = sessions.filter(s => s.id !== id);
     renderSessionList();
