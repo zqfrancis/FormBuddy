@@ -1694,9 +1694,12 @@
     const rShoulder = mappedPts[12], rElbow = mappedPts[14], rHand = mappedPts[16];
 
     if (showAng) {
-      if (lHip && lKnee && lAnkle) lastAngles.leftKnee = drawJointAngleMapped(lHip, lKnee, lAnkle, 'right', 'support');
-      if (rHip && rKnee && rAnkle) lastAngles.rightKnee = drawJointAngleMapped(rHip, rKnee, rAnkle, 'left', 'kick');
-      if (rShoulder && rElbow && rHand) lastAngles.guardElbow = drawJointAngleMapped(rShoulder, rElbow, rHand, 'right', 'guard');
+      // Never let an occluded joint (drawJointAngleMapped -> null) clobber
+      // a good angle: a null redraw must leave lastAngles untouched, so a
+      // later freeze never inherits a null that renders as a fake default.
+      if (lHip && lKnee && lAnkle) { const a = drawJointAngleMapped(lHip, lKnee, lAnkle, 'right', 'support'); if (a != null) lastAngles.leftKnee = a; }
+      if (rHip && rKnee && rAnkle) { const a = drawJointAngleMapped(rHip, rKnee, rAnkle, 'left', 'kick'); if (a != null) lastAngles.rightKnee = a; }
+      if (rShoulder && rElbow && rHand) { const a = drawJointAngleMapped(rShoulder, rElbow, rHand, 'right', 'guard'); if (a != null) lastAngles.guardElbow = a; }
     }
 
     if (showCOM && lHip && rHip && lHip.visibility > 0.5 && rHip.visibility > 0.5) {
@@ -1719,6 +1722,26 @@
     let angle = Math.abs((rad * 180.0) / Math.PI);
     if (angle > 180.0) angle = 360.0 - angle;
     return Math.round(angle);
+  }
+
+  // Freeze-card / on-screen-tag angle unification: compute the three joint
+  // angles from ONE landmark set, purely, without touching lastAngles.
+  // A joint whose landmarks are occluded (visibility <= 0.5) or missing
+  // yields null, never a plausible-looking placeholder number.
+  function angleOfPoints(a, b, c) {
+    if (!a || !b || !c) return null;
+    if ((a.visibility !== undefined && a.visibility <= 0.5) ||
+        (b.visibility !== undefined && b.visibility <= 0.5) ||
+        (c.visibility !== undefined && c.visibility <= 0.5)) return null;
+    return calculateAngle(a, b, c);
+  }
+  function anglesFromLandmarks(lm) {
+    if (!lm) return { leftKnee: null, rightKnee: null, guardElbow: null };
+    return {
+      leftKnee: angleOfPoints(lm[23], lm[25], lm[27]),
+      rightKnee: angleOfPoints(lm[24], lm[26], lm[28]),
+      guardElbow: angleOfPoints(lm[12], lm[14], lm[16])
+    };
   }
 
   function drawJointAngleMapped(p1, p2, p3, alignDir = 'auto', tagKey = null) {
@@ -1781,7 +1804,7 @@
       video.pause();
       logRecEvent({ type: 'pause', videoTime: r2(video.currentTime) });
       if (currentRole === 'Coach') {
-        triggerFrameAnalysis();
+        analyzePausedFrame();
       }
     }
   }
@@ -1822,7 +1845,7 @@
   video.addEventListener('seeked', async () => {
     if (isDemoMode || isExporting) return;
     if (video.paused && currentRole === 'Coach') {
-      triggerFrameAnalysis();
+      analyzePausedFrame();
     }
   });
 
@@ -1852,7 +1875,7 @@
     isSeeking = false;
     logRecEvent({ type: 'seek', videoTime: r2(parseFloat(val)) });
     if (currentRole === 'Coach') {
-      triggerFrameAnalysis();
+      analyzePausedFrame();
     }
   }
 
@@ -1890,13 +1913,46 @@
     }
   }
 
+  // pose.send() resolves before onPoseResults() fires, so a freeze taken
+  // right after triggerFrameAnalysis() would snapshot the PREVIOUS frame's
+  // angles while the screen later draws the new frame's tags — the exact
+  // card-vs-screen mismatch reported 2026-10-15. Wait for a genuinely new
+  // pose result (polling, with a timeout so a failed analysis never hangs).
+  function waitForFreshPoseResults(previous, timeoutMs = 1200) {
+    return new Promise(resolve => {
+      const start = Date.now();
+      const tick = () => {
+        if (lastPoseResults !== previous) return resolve(true);
+        if (Date.now() - start >= timeoutMs) return resolve(false);
+        setTimeout(tick, 50);
+      };
+      tick();
+    });
+  }
+
+  // A paused frame that is already a saved freeze point is redrawn from
+  // that point's stored landmarks, never re-estimated: re-estimation on
+  // seek/jump/pause drifted a few degrees (or more, on a smoothed model)
+  // and made the on-screen tags disagree with the saved card again.
+  function analyzePausedFrame() {
+    const fp = freezePoints.find(p => Math.abs(p.time - video.currentTime) < 0.05);
+    if (fp && fp.landmarks) {
+      lastPoseResults = { poseLandmarks: fp.landmarks };
+      drawPoseFrame(lastPoseResults);
+      return Promise.resolve();
+    }
+    return triggerFrameAnalysis();
+  }
+
   async function freezeAndAnalyze() {
     if (isDemoMode) {
       alert(i18n[currentLang].alertDemoCapture);
       return;
     }
     video.pause();
+    const beforeResults = lastPoseResults;
     await triggerFrameAnalysis();
+    const fresh = await waitForFreshPoseResults(beforeResults);
 
     const timeSec = video.currentTime;
     const timeStr = formatTime(timeSec);
@@ -1905,12 +1961,21 @@
     document.getElementById('freezeTime').innerText = timeStr;
     document.getElementById('freezeBanner').style.display = 'block';
 
+    // Card, session event, and the on-screen tags all derive from this ONE
+    // landmark set (drawPoseFrame in onPoseResults already drew these tags
+    // from the same fresh result). If no fresh result arrived, record no
+    // angles at all (card shows —) rather than a stale or default number.
+    const landmarks = (fresh && lastPoseResults && lastPoseResults.poseLandmarks)
+      ? lastPoseResults.poseLandmarks : null;
+    const angles = anglesFromLandmarks(landmarks);
+
     const newPoint = {
       id: Date.now(),
       time: timeSec,
       timeStr: timeStr,
       hold: hold,
-      angles: { ...lastAngles }
+      angles: angles,
+      landmarks: landmarks
     };
 
     freezePoints.push(newPoint);
@@ -1922,8 +1987,8 @@
       type: 'freeze',
       videoTime: r2(timeSec),
       hold: hold,
-      angles: { ...lastAngles },
-      landmarks: lastPoseResults && lastPoseResults.poseLandmarks ? lastPoseResults.poseLandmarks : null
+      angles: { ...angles },
+      landmarks: landmarks
     });
   }
 
@@ -1941,7 +2006,9 @@
     const fp = freezePoints.find(p => Math.abs(p.time - timeSec) < 0.05);
     teleStrokes = (fp && fp.strokes) || [];
     if (currentRole === 'Coach') {
-      await triggerFrameAnalysis();
+      // Stored landmarks redraw the card's exact angles; the seeked
+      // handler re-applies the same stored set once the seek lands.
+      await analyzePausedFrame();
     }
   }
 
@@ -1986,9 +2053,9 @@
       <div class="snapshot-card">
         <button class="card-del" title="Delete" onclick="deletePoint(${p.id}, event)">🗑️</button>
         <div style="color:#00ff87; font-weight:bold; cursor:pointer;" onclick="jumpToPoint(${p.time})">${t.timePoint}${p.timeStr}</div>
-        <div>${t.cardKick}<b>${p.angles.rightKnee ? p.angles.rightKnee + '°' : '168°'}</b></div>
-        <div>${t.cardSupport}<b>${p.angles.leftKnee ? p.angles.leftKnee + '°' : '172°'}</b></div>
-        <div>${t.cardGuard}<b>${p.angles.guardElbow ? p.angles.guardElbow + '°' : '78°'}</b></div>
+        <div>${t.cardKick}<b>${p.angles && p.angles.rightKnee != null ? p.angles.rightKnee + '°' : '—'}</b></div>
+        <div>${t.cardSupport}<b>${p.angles && p.angles.leftKnee != null ? p.angles.leftKnee + '°' : '—'}</b></div>
+        <div>${t.cardGuard}<b>${p.angles && p.angles.guardElbow != null ? p.angles.guardElbow + '°' : '—'}</b></div>
       </div>
     `).join('');
   }
