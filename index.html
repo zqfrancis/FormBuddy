@@ -1697,9 +1697,10 @@
       // Never let an occluded joint (drawJointAngleMapped -> null) clobber
       // a good angle: a null redraw must leave lastAngles untouched, so a
       // later freeze never inherits a null that renders as a fake default.
-      if (lHip && lKnee && lAnkle) { const a = drawJointAngleMapped(lHip, lKnee, lAnkle, 'right', 'support'); if (a != null) lastAngles.leftKnee = a; }
-      if (rHip && rKnee && rAnkle) { const a = drawJointAngleMapped(rHip, rKnee, rAnkle, 'left', 'kick'); if (a != null) lastAngles.rightKnee = a; }
-      if (rShoulder && rElbow && rHand) { const a = drawJointAngleMapped(rShoulder, rElbow, rHand, 'right', 'guard'); if (a != null) lastAngles.guardElbow = a; }
+      const t = i18n[currentLang];
+      if (lHip && lKnee && lAnkle) { const a = drawJointAngleMapped(lHip, lKnee, lAnkle, 'right', 'support', t.tagSupport); if (a != null) lastAngles.leftKnee = a; }
+      if (rHip && rKnee && rAnkle) { const a = drawJointAngleMapped(rHip, rKnee, rAnkle, 'left', 'kick', t.tagKick); if (a != null) lastAngles.rightKnee = a; }
+      if (rShoulder && rElbow && rHand) { const a = drawJointAngleMapped(rShoulder, rElbow, rHand, 'right', 'guard', t.tagGuard); if (a != null) lastAngles.guardElbow = a; }
     }
 
     if (showCOM && lHip && rHip && lHip.visibility > 0.5 && rHip.visibility > 0.5) {
@@ -1760,10 +1761,13 @@
     } : pt);
   }
 
-  function drawJointAngleMapped(p1, p2, p3, alignDir = 'auto', tagKey = null) {
+  function drawJointAngleMapped(p1, p2, p3, alignDir = 'auto', tagKey = null, label = '') {
     if (p1.visibility > 0.5 && p2.visibility > 0.5 && p3.visibility > 0.5) {
       const angle = calculateAngle(p1, p2, p3);
-      drawAngleTag(p1, p2, p3, `${angle}°`, alignDir, tagKey);
+      // Label the live tag (same wording as the demo tags and the sidebar
+      // card rows) so a coach — and a screenshot — can tell which joint
+      // each number belongs to instead of matching three bare numbers.
+      drawAngleTag(p1, p2, p3, label ? `${angle}° (${label})` : `${angle}°`, alignDir, tagKey);
       return angle;
     }
     return null;
