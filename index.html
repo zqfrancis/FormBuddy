@@ -1743,6 +1743,22 @@
       guardElbow: angleOfPoints(lm[12], lm[14], lm[16])
     };
   }
+  // CRITICAL (2026-10-30 browser QA): the on-screen tags are computed from
+  // DISPLAY-space points (drawPoseFrame maps landmarks through
+  // getMediaDisplayBox), not from normalized landmarks. For a 16:9 video
+  // one normalized x-unit is ~1.78x one normalized y-unit in pixels, so a
+  // normalized-space angle can differ from the displayed angle by 20-30
+  // degrees on diagonal limbs. The card must therefore be computed from
+  // the SAME display-mapped points the tags are drawn from.
+  function mapLandmarksToStage(lm) {
+    if (!lm || !video.videoWidth || !stage.clientWidth) return null;
+    const box = getMediaDisplayBox(video.videoWidth, video.videoHeight, stage.clientWidth, stage.clientHeight);
+    return lm.map(pt => pt ? {
+      x: box.rx + pt.x * box.rw,
+      y: box.ry + pt.y * box.rh,
+      visibility: pt.visibility
+    } : pt);
+  }
 
   function drawJointAngleMapped(p1, p2, p3, alignDir = 'auto', tagKey = null) {
     if (p1.visibility > 0.5 && p2.visibility > 0.5 && p3.visibility > 0.5) {
@@ -1963,11 +1979,14 @@
 
     // Card, session event, and the on-screen tags all derive from this ONE
     // landmark set (drawPoseFrame in onPoseResults already drew these tags
-    // from the same fresh result). If no fresh result arrived, record no
-    // angles at all (card shows —) rather than a stale or default number.
+    // from the same fresh result) — and in the SAME display space: the
+    // card angles are computed from the display-mapped points, not the
+    // normalized landmarks, or 16:9 distortion would split them again.
+    // If no fresh result arrived, record no angles at all (card shows —)
+    // rather than a stale or default number.
     const landmarks = (fresh && lastPoseResults && lastPoseResults.poseLandmarks)
       ? lastPoseResults.poseLandmarks : null;
-    const angles = anglesFromLandmarks(landmarks);
+    const angles = anglesFromLandmarks(mapLandmarksToStage(landmarks));
 
     const newPoint = {
       id: Date.now(),
