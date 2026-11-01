@@ -521,7 +521,7 @@
         <button id="btnSeekBack" title="微调 −0.5 秒 / Fine step −0.5s" onclick="fineSeek(-0.5)">⏪ −0.5s</button>
         <input type="range" id="videoSeeker" min="0" value="0" step="0.01" oninput="onSeekInput(this.value)" onchange="onSeekChange(this.value)" />
         <button id="btnSeekFwd" title="微调 +0.5 秒 / Fine step +0.5s" onclick="fineSeek(0.5)">+0.5s ⏩</button>
-        <span id="timeDisplay" style="font-size:0.85rem; font-family:monospace; color:var(--text-main);">00:00.0</span>
+        <span id="timeDisplay" style="font-size:0.85rem; font-family:monospace; color:var(--text-main);">00:00.0 / 00:00.0</span>
       </div>
 
       <div class="control-row">
@@ -1866,6 +1866,7 @@
   video.addEventListener('loadedmetadata', () => {
     syncCanvasSize();
     seeker.max = video.duration;
+    updateSeekerUI(); // show total duration right after upload, not only once playing
   });
 
   video.addEventListener('seeked', async () => {
@@ -1875,9 +1876,15 @@
     }
   });
 
+  // Time readout shows current / total (e.g. 00:07.7 / 00:21.0) so a coach
+  // can tell where a freeze frame sits in the clip at a glance. Unknown
+  // duration (no video yet) falls back to the current time alone.
   function updateSeekerUI() {
     seeker.value = video.currentTime;
-    timeDisplay.innerText = formatTime(video.currentTime);
+    const dur = video.duration;
+    timeDisplay.innerText = Number.isFinite(dur) && dur > 0
+      ? formatTime(video.currentTime) + ' / ' + formatTime(dur)
+      : formatTime(video.currentTime);
   }
 
   function formatTime(timeSec) {
