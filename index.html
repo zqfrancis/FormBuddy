@@ -786,6 +786,9 @@
       btnDeleteSession: "删除",
       confirmDeleteSession: "确定删除这条录制吗？",
       sessionDelYes: "确认删除",
+      clearAllPoints: "🗑️ 清除全部定格点",
+      confirmClearAllPoints: "确定清除全部定格点吗？",
+      clearAllPointsYes: "确认清除",
       videoTip: "💡 建议上传 15–20 秒的视频。",
       recOn: "🔴 录制中",
       recMuteNote: "🔇 录制时视频静音是故意的，防止声音串进麦克风",
@@ -946,6 +949,9 @@
       btnDeleteSession: "Delete",
       confirmDeleteSession: "Delete this session?",
       sessionDelYes: "Confirm delete",
+      clearAllPoints: "🗑️ Clear all freeze points",
+      confirmClearAllPoints: "Clear all freeze points?",
+      clearAllPointsYes: "Confirm clear",
       videoTip: "💡 Tip: 15–20s videos work best.",
       recOn: "🔴 REC",
       recMuteNote: "🔇 Video muted during recording to avoid mic bleed",
@@ -2055,9 +2061,31 @@
     renderSidebarCards();
   }
 
+  // Clear-all freeze points uses the same two-tap in-page confirm as
+  // session delete (10-29): first tap arms, second tap actually clears —
+  // no blocking dialog, and a single tap can never wipe the list.
+  let clearingAllPoints = false;
+
+  function clearAllPoints() {
+    if (!clearingAllPoints) { clearingAllPoints = true; renderTimelinePoints(); return; }
+    clearingAllPoints = false;
+    freezePoints = [];
+    teleStrokes = [];
+    document.getElementById('freezeBanner').style.display = 'none';
+    redrawCurrentFrame(); // repaint without the cleared points' pen layer
+    renderTimelinePoints();
+    renderSidebarCards();
+  }
+
+  function cancelClearAllPoints() {
+    clearingAllPoints = false;
+    renderTimelinePoints();
+  }
+
   function renderTimelinePoints() {
     const container = document.getElementById('pointsContainer');
     const t = i18n[currentLang];
+    if (freezePoints.length === 0) clearingAllPoints = false;
     const unit = freezePoints.length > 1 ? t.unitPoints : t.unitPoint;
     document.getElementById('pointCount').innerText = `${freezePoints.length} ${unit}`;
 
@@ -2073,7 +2101,13 @@
         ${p.hold ? `<span style="font-size:0.75rem; color:var(--text-muted);">⏱${p.hold}s</span>` : ''}
         <button class="del-btn" title="Delete" onclick="deletePoint(${p.id}, event)">✕</button>
       </div>
-    `).join('');
+    `).join('') + (clearingAllPoints
+      ? `<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:6px;">
+           <span style="color:#ff4757; font-weight:700; font-size:0.8rem;">${t.confirmClearAllPoints}</span>
+           <button onclick="clearAllPoints()" style="color:#ff4757 !important;">${t.clearAllPointsYes}</button>
+           <button onclick="cancelClearAllPoints()">${t.tplCancel}</button>
+         </div>`
+      : `<div style="margin-top:6px;"><button onclick="clearAllPoints()">${t.clearAllPoints}</button></div>`);
   }
 
   function renderSidebarCards() {
