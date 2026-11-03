@@ -2054,9 +2054,22 @@
     }
   }
 
+  // Stale-status fix (2026-11-03): freezing sets the status badge to
+  // "saved", but deleting the points left that text on screen with no
+  // points left. When the list becomes empty, fall back to the neutral
+  // view-mode status — but only if the badge still says "saved", so a
+  // later playing/recording status is never clobbered.
+  function refreshStatusAfterPointsChange() {
+    if (freezePoints.length === 0 && currentStatusKey === 'statusSaved')
+      updateStatus(currentRole === 'Coach' ? 'statusCoachView' : 'statusStudentView');
+  }
+
   function deletePoint(id, event) {
     if (event) event.stopPropagation();
     freezePoints = freezePoints.filter(p => p.id !== id);
+    if (freezePoints.length === 0)
+      document.getElementById('freezeBanner').style.display = 'none';
+    refreshStatusAfterPointsChange();
     renderTimelinePoints();
     renderSidebarCards();
   }
@@ -2072,6 +2085,7 @@
     freezePoints = [];
     teleStrokes = [];
     document.getElementById('freezeBanner').style.display = 'none';
+    refreshStatusAfterPointsChange();
     redrawCurrentFrame(); // repaint without the cleared points' pen layer
     renderTimelinePoints();
     renderSidebarCards();
