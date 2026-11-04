@@ -2066,9 +2066,16 @@
 
   function deletePoint(id, event) {
     if (event) event.stopPropagation();
+    // Deleted-point cleanup (2026-11-04): clear-all already drops the pen
+    // layer, but single-point delete did not — deleting the point on
+    // screen left its strokes (repainted by every drawPoseFrame) and its
+    // freeze banner behind, on a frame that no longer has a point.
+    const deleted = freezePoints.find(p => p.id === id);
+    const wasCurrent = deleted && (Math.abs(deleted.time - video.currentTime) < 0.05 || teleStrokes === deleted.strokes);
     freezePoints = freezePoints.filter(p => p.id !== id);
-    if (freezePoints.length === 0)
+    if (freezePoints.length === 0 || wasCurrent)
       document.getElementById('freezeBanner').style.display = 'none';
+    if (wasCurrent) { teleStrokes = []; redrawCurrentFrame(); }
     refreshStatusAfterPointsChange();
     renderTimelinePoints();
     renderSidebarCards();
