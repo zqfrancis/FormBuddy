@@ -348,7 +348,7 @@
   @keyframes blink { 50% { opacity:0.25; } }
   #directStopBtn { background:#ff4757 !important; border:none !important; color:#fff !important; border-radius:16px; padding:6px 12px !important; }
   /* ---- Report view (4a): paper-style training report ---- */
-  #reportOverlay, #guideOverlay {
+  #reportOverlay, #guideOverlay, #installOverlay {
     position:fixed; inset:0; z-index:70; overflow-y:auto;
     background:rgba(0,0,0,0.55); padding:24px 12px;
     /* iOS modal scroll fix: without this, Safari flakily hands the swipe to
@@ -362,6 +362,11 @@
   /* Coach guide (user manual): same paper card as report, body follows current language */
   #guideOverlay.lang-en .gzh { display:none; }
   #guideOverlay.lang-zh .gen { display:none; }
+  /* Install sheet (same bilingual spans as the guide) */
+  #installOverlay.lang-en .gzh { display:none; }
+  #installOverlay.lang-zh .gen { display:none; }
+  .guide-page ol { padding-left:20px; margin:8px 0; }
+  .guide-page ol li { margin-bottom:8px; }
   .guide-page h2 .gen { display:block; font-size:0.85rem; color:#555; font-weight:400; }
   .guide-page h3 .gen { font-size:0.8rem; color:#666; font-weight:400; margin-left:6px; }
   .guide-page p .gen, .guide-page li .gen { color:#555; font-size:0.88rem; }
@@ -488,6 +493,8 @@
         <option value="Coach" id="optCoach">👨‍🏫 Coach</option>
       </select>
     </div>
+
+    <button id="installBtn" style="display:none;" onclick="onInstallBtnClick()">📲 Install App</button>
   </div>
 </header>
 
@@ -696,6 +703,23 @@
     <div class="report-actions"><button class="guideCloseBtn" onclick="closeGuide()">✕ 关闭 / Close</button></div>
   </div>
 </div>
+<div id="installOverlay" style="display:none;">
+  <div class="report-page guide-page">
+    <div class="report-head"><h2><span class="gzh">📲 添加到主屏幕</span><span class="gen">📲 Add to Home Screen</span></h2><button class="guideCloseBtn" onclick="closeInstallSheet()">✕ 关闭 / Close</button></div>
+    <div id="installBody">
+      <p><span class="gzh">把 FormBuddy 装到手机主屏幕，像 App 一样打开，不用每次输网址。</span><span class="gen">Install FormBuddy on your home screen and open it like an app — no need to type the address each time.</span></p>
+      <h3><span class="gzh">iPhone / iPad（Safari）</span><span class="gen">iPhone / iPad (Safari)</span></h3>
+      <ol>
+        <li><span class="gzh">点浏览器底部的「分享」按钮（方框带向上箭头）</span><span class="gen">Tap the Share button at the bottom of Safari (square with an up arrow)</span></li>
+        <li><span class="gzh">往下划，点「添加到主屏幕」</span><span class="gen">Scroll down and tap "Add to Home Screen"</span></li>
+        <li><span class="gzh">点右上角「添加」，以后点桌面图标直接打开</span><span class="gen">Tap "Add" — then open FormBuddy from the home-screen icon</span></li>
+      </ol>
+      <h3><span class="gzh">安卓 / 电脑（Chrome、Edge）</span><span class="gen">Android / desktop (Chrome, Edge)</span></h3>
+      <p><span class="gzh">点顶栏的「📲 安装到主屏幕」，在弹出的确认框里点「安装」即可。</span><span class="gen">Tap "📲 Install App" in the top bar, then "Install" in the confirmation dialog.</span></p>
+    </div>
+    <div class="report-actions"><button class="guideCloseBtn" onclick="closeInstallSheet()">✕ 关闭 / Close</button><button id="installHideBtn" onclick="dismissInstallBtn()" style="background:none; border:none; color:#888; text-decoration:underline; font-size:0.85rem;">不再提示</button></div>
+  </div>
+</div>
 <div id="directOverlay">
   <span class="rec-dot" id="directRecDot" style="display:none;"></span>
   <span id="directOverlayText"></span>
@@ -826,6 +850,8 @@
       btnReport: "📄 报告",
       btnGuide: "📖 教练使用说明",
       guideClose: "✕ 关闭",
+      btnInstall: "📲 安装到主屏幕",
+      installHide: "不再提示",
       reportTitle: "📄 训练报告",
       reportTitleEn: "Training Report",
       reportStudent: "学员姓名",
@@ -989,6 +1015,8 @@
       btnReport: "📄 Report",
       btnGuide: "📖 Coach Guide",
       guideClose: "✕ Close",
+      btnInstall: "📲 Install App",
+      installHide: "Don't show again",
       reportTitle: "📄 Training Report",
       reportTitleEn: "训练报告",
       reportStudent: "Student name",
@@ -1356,6 +1384,7 @@
     renderTemplateChips();
     renderCustomTplUi();
     loadSessions();
+    updateInstallBtn(); // install button: only when installable (prompt event or iOS)
   });
 
   function redrawCurrentFrame() {
@@ -2644,7 +2673,9 @@
     document.getElementById('titleSubmissions').innerText = t.titleSubmissions;
     document.getElementById('titleCoachUpload').innerText = t.titleCoachUpload;
     document.getElementById('btnGuide').innerText = t.btnGuide;
+    syncInstallBtnLabel(); // install button label follows the new language
     syncGuideLang(); // guide body + close buttons follow the new language
+    syncInstallLang(); // install sheet follows the new language, like the guide
     document.getElementById('holdLabel').innerText = t.holdLabel;
     document.getElementById('titleSessions').innerText = t.titleSessions;
     document.getElementById('titleTemplates').innerText = t.titleTemplates;
@@ -3132,7 +3163,8 @@
   function unlockBodyScroll() {
     const guideOpen = document.getElementById('guideOverlay').style.display === 'block';
     const reportOpen = document.getElementById('reportOverlay').style.display === 'block';
-    if (guideOpen || reportOpen) return; // the other overlay still needs the lock
+    const installOpen = document.getElementById('installOverlay').style.display === 'block';
+    if (guideOpen || reportOpen || installOpen) return; // another overlay still needs the lock
     document.body.classList.remove('modal-open');
     document.body.style.top = '';
     window.scrollTo(0, modalScrollY);
@@ -3158,6 +3190,86 @@
     document.getElementById('guideOverlay').style.display = 'none';
     unlockBodyScroll();
   }
+
+  // ---- Add to Home Screen / install prompt (PWA follow-up, 2026-11-05) ----
+  // Chrome/Edge fire beforeinstallprompt when the app is installable; iOS
+  // Safari has no such event, so iPhone/iPad users get a 3-step Share-menu
+  // sheet instead. The button stays hidden until one of the two paths can
+  // actually install, and never nags: dismissing the native prompt (or the
+  // "don't show again" link) persists in localStorage; installing clears it.
+  const INSTALL_DISMISSED_KEY = 'formbuddy_install_dismissed_v1';
+  let deferredInstallPrompt = null;
+  function isIOSDevice() {
+    const ua = navigator.userAgent || '';
+    if (/iphone|ipad|ipod/i.test(ua)) return true;
+    // iPadOS 13+ reports as MacIntel; touch points tell it apart from a Mac
+    return navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+  }
+  function isStandalone() {
+    return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  }
+  function installDismissed() {
+    try { return localStorage.getItem(INSTALL_DISMISSED_KEY) === '1'; } catch (e) { return false; }
+  }
+  function updateInstallBtn() {
+    const btn = document.getElementById('installBtn');
+    if (!btn) return;
+    const show = !installDismissed() && !isStandalone() &&
+      (deferredInstallPrompt !== null || isIOSDevice());
+    btn.style.display = show ? '' : 'none';
+  }
+  function syncInstallBtnLabel() {
+    const btn = document.getElementById('installBtn');
+    if (btn) btn.innerText = i18n[currentLang].btnInstall;
+  }
+  function syncInstallLang() {
+    const ov = document.getElementById('installOverlay');
+    if (!ov) return;
+    ov.classList.toggle('lang-en', currentLang === 'en');
+    ov.classList.toggle('lang-zh', currentLang === 'zh');
+    const hideBtn = document.getElementById('installHideBtn');
+    if (hideBtn) hideBtn.innerText = i18n[currentLang].installHide;
+  }
+  function onInstallBtnClick() {
+    if (deferredInstallPrompt) {
+      const p = deferredInstallPrompt;
+      deferredInstallPrompt = null;
+      updateInstallBtn();
+      p.prompt();
+      p.userChoice.then((choice) => {
+        if (choice && choice.outcome === 'dismissed') {
+          try { localStorage.setItem(INSTALL_DISMISSED_KEY, '1'); } catch (e) {}
+        }
+        updateInstallBtn();
+      }).catch(() => updateInstallBtn());
+    } else if (isIOSDevice()) {
+      openInstallSheet();
+    }
+  }
+  function openInstallSheet() {
+    syncInstallLang();
+    document.getElementById('installOverlay').style.display = 'block';
+    lockBodyScroll();
+  }
+  function closeInstallSheet() {
+    document.getElementById('installOverlay').style.display = 'none';
+    unlockBodyScroll();
+  }
+  function dismissInstallBtn() {
+    try { localStorage.setItem(INSTALL_DISMISSED_KEY, '1'); } catch (e) {}
+    closeInstallSheet();
+    updateInstallBtn();
+  }
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    updateInstallBtn();
+  });
+  window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    try { localStorage.removeItem(INSTALL_DISMISSED_KEY); } catch (e) {}
+    updateInstallBtn();
+  });
 
   function saveReportStudentName() {
     if (!reportCache) return;
