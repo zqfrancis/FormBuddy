@@ -1265,6 +1265,45 @@
 
   pose.onResults(onPoseResults);
 
+  // Pose model warm-up (2026-11-06 small improvement: the first freeze after
+  // upload used to take ~15s — the MediaPipe wasm/model downloads and
+  // initializes on the first pose.send(). Warm it up in the background as
+  // soon as a real video loads, so the first freeze/pause analysis is fast.
+  // The warm-up result is stale by the time it arrives (the video has moved
+  // on), so onPoseResults swallows it instead of drawing it. pose.send()
+  // resolves before onPoseResults fires, so the warm-up promise resolves
+  // only when the warm-up callback is consumed — that serializes the
+  // warm-up strictly before any later analysis send, so no stale result can
+  // land after a fresh one. A 30s safety timeout releases the gate if the
+  // callback never comes (a late callback is still swallowed); a failed
+  // send simply leaves the first freeze to retry via the normal path.
+  let poseWarmedUp = false;
+  let poseWarmupPromise = null;
+  let poseWarmupResolve = null;
+  let poseWarmupStale = false;
+  const POSE_WARMUP_TIMEOUT_MS = 30000;
+  function warmUpPose() {
+    if (poseWarmedUp || poseWarmupPromise || isDemoMode) return;
+    if (video.readyState < 2 || !video.videoWidth) return;
+    isProcessingFrame = true; // a freeze during warm-up waits (trigger awaits the promise), never sends a second pose.send
+    poseWarmupPromise = new Promise((resolve) => { poseWarmupResolve = resolve; });
+    setTimeout(() => {
+      if (poseWarmupResolve) {
+        const r = poseWarmupResolve; poseWarmupResolve = null;
+        isProcessingFrame = false; poseWarmupPromise = null; poseWarmedUp = true;
+        poseWarmupStale = true; // a late callback must still be swallowed, not drawn
+        r(false);
+      }
+    }, POSE_WARMUP_TIMEOUT_MS);
+    pose.send({ image: video }).catch(() => {
+      if (poseWarmupResolve) {
+        const r = poseWarmupResolve; poseWarmupResolve = null;
+        isProcessingFrame = false; poseWarmupPromise = null; poseWarmedUp = true;
+        r(false);
+      }
+    });
+  }
+
   // --- 主题/自动日夜模式逻辑 ---
   function initTheme() {
     applyThemeMode(currentThemeMode);
@@ -1645,6 +1684,18 @@
   }
 
   function onPoseResults(results) {
+    // Warm-up result: swallow it — its frame is stale by the time the model
+    // finishes loading, and it must never reach the canvas or
+    // lastPoseResults. Resolving the warm-up promise here (not when
+    // pose.send() resolves) is what keeps warm-up strictly before any later
+    // analysis send. A timed-out warm-up sets poseWarmupStale so its late
+    // callback is still swallowed.
+    if (poseWarmupResolve || poseWarmupStale) {
+      if (poseWarmupResolve) { const r = poseWarmupResolve; poseWarmupResolve = null; r(true); }
+      poseWarmupStale = false;
+      isProcessingFrame = false; poseWarmupPromise = null; poseWarmedUp = true;
+      return;
+    }
     if (isDemoMode || isExporting) return;
     lastPoseResults = results;
     if (isRecording && results.poseLandmarks && video.paused && !isDemoMode) {
@@ -1887,6 +1938,7 @@
           video.pause();
         });
         updateStatus('statusPlaying');
+        warmUpPose(); // preload the pose model in the background — the first freeze used to wait ~15s for it
         requestAnimationFrame(processVideoFrame);
       };
 
@@ -1967,6 +2019,10 @@
 
   async function triggerFrameAnalysis() {
     if (isDemoMode || currentRole !== 'Coach') return;
+    // A warm-up still in flight owns the pose pipeline: wait for its
+    // callback to be consumed before sending, so results stay in order and
+    // a freeze never snapshots the warm-up frame's landmarks.
+    if (poseWarmupPromise) { try { await poseWarmupPromise; } catch (e) { /* warm-up failure is silent; the send below retries */ } }
     syncCanvasSize();
     if (video.readyState >= 2 && video.videoWidth > 0 && !isProcessingFrame) {
       updateStatus('statusAnalyzing');
