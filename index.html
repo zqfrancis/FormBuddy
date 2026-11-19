@@ -348,7 +348,7 @@
   @keyframes blink { 50% { opacity:0.25; } }
   #directStopBtn { background:#ff4757 !important; border:none !important; color:#fff !important; border-radius:16px; padding:6px 12px !important; }
   /* ---- Report view (4a): paper-style training report ---- */
-  #reportOverlay, #guideOverlay, #installOverlay {
+  #reportOverlay, #guideOverlay, #installOverlay, #privacyOverlay {
     position:fixed; inset:0; z-index:70; overflow-y:auto;
     background:rgba(0,0,0,0.55); padding:24px 12px;
     /* iOS modal scroll fix: without this, Safari flakily hands the swipe to
@@ -365,6 +365,9 @@
   /* Install sheet (same bilingual spans as the guide) */
   #installOverlay.lang-en .gzh { display:none; }
   #installOverlay.lang-zh .gen { display:none; }
+  /* Privacy policy sheet (same bilingual spans as the guide) */
+  #privacyOverlay.lang-en .gzh { display:none; }
+  #privacyOverlay.lang-zh .gen { display:none; }
   .guide-page ol { padding-left:20px; margin:8px 0; }
   .guide-page ol li { margin-bottom:8px; }
   .guide-page h2 .gen { display:block; font-size:0.85rem; color:#555; font-weight:400; }
@@ -495,6 +498,7 @@
     </div>
 
     <button id="installBtn" style="display:none;" onclick="onInstallBtnClick()">📲 Install App</button>
+    <button id="privacyBtn" onclick="openPrivacy(privacyConsented())">🔒 隐私政策</button>
   </div>
 </header>
 
@@ -720,6 +724,37 @@
     <div class="report-actions"><button class="guideCloseBtn" onclick="closeInstallSheet()">✕ 关闭 / Close</button><button id="installHideBtn" onclick="dismissInstallBtn()" style="background:none; border:none; color:#888; text-decoration:underline; font-size:0.85rem;">不再提示</button></div>
   </div>
 </div>
+<div id="privacyOverlay" style="display:none;">
+  <div class="report-page guide-page">
+    <div class="report-head"><h2><span class="gzh">🔒 隐私政策</span><span class="gen">🔒 Privacy Policy</span></h2><button class="privacyCloseBtn" onclick="closePrivacy()">✕ 关闭 / Close</button></div>
+    <div id="privacyBody">
+      <p><span class="gzh">FormBuddy 由 AxisMotion 开发，是一款本机动作分析工具：上传训练视频，查看骨骼力线与关节角度，录制语音点评。本政策 v1.0 自 2026 年 11 月 19 日起生效。</span><span class="gen">FormBuddy, developed by AxisMotion, is an on-device motion analysis tool: upload a training video, view skeleton lines and joint angles, and record voice feedback. This policy (v1.0) is effective November 19, 2026.</span></p>
+      <p><span class="gzh"><b>请仔细阅读以下条款。继续使用 FormBuddy，即表示你已阅读并同意本政策；未满 18 岁的运动员，须由家长或监护人代为阅读并同意。</b></span><span class="gen"><b>Please read the terms below carefully. By continuing to use FormBuddy, you agree to this policy; athletes under 18 must have a parent or guardian read and accept it on their behalf.</b></span></p>
+      <h3><span class="gzh">1. 默认使用：本机处理，不收集</span><span class="gen">1. Default use: on-device, nothing collected</span></h3>
+      <p><span class="gzh">默认情况下，FormBuddy 不收集、不上传、不分享你的任何数据。视频、语音点评和录制记录只保存在这台设备的浏览器里（本地存储），不会发送到我们的服务器，也不会同步到其他设备。删除浏览器数据或在应用内删除录制，即会清除这些本地数据。我们不设账号，不记录你的姓名、位置，不投放广告，不使用第三方追踪器。</span><span class="gen">By default, FormBuddy collects, uploads, and shares nothing. Videos, voice feedback, and session records stay in this device's browser (local storage) only — they are never sent to our servers and never sync to other devices. Clearing browser data or deleting a session in the app removes this local data. We require no account, record no name or location, serve no ads, and use no third-party trackers.</span></p>
+      <p><span class="gzh">姿态分析在设备本地运行：骨骼追踪模型在浏览器内处理视频画面，视频帧不会发送给模型提供方。</span><span class="gen">Pose analysis runs on your device: the skeletal tracking model processes video frames inside the browser, and no video frame is sent to the model provider.</span></p>
+      <h3><span class="gzh">2. 自愿分享：测试视频（须你主动选择）</span><span class="gen">2. Voluntary sharing: test videos (only if you choose)</span></h3>
+      <p><span class="gzh">只有当你主动选择分享训练视频、帮助改进 FormBuddy 时，以下条款才适用；不分享不影响正常使用。分享的视频仅用于 AI 身体追踪模型校准、骨骼渲染、数据可视化与教练反馈。</span><span class="gen">The terms in this section apply only if you voluntarily choose to share a training video to help improve FormBuddy; declining does not affect normal use. Shared videos are used strictly for AI body-tracking model calibration, skeletal rendering, data visualization, and coaching feedback.</span></p>
+      <ul>
+        <li><span class="gzh">匿名处理：分享的视频只挂一个匿名编号（如 FB_Alpha_001），不附带运动员真实姓名、位置或其他可识别身份的信息，也不会提供给未经授权的第三方。</span><span class="gen">Anonymization: shared videos carry only an anonymous ID (e.g., FB_Alpha_001). No athlete name, location, or other personally identifiable information is attached, and videos are never given to unauthorized third parties.</span></li>
+        <li><span class="gzh">教练审阅：你授权我们把匿名化处理后的视频与数据报告，仅分享给为本次训练评估指定的认证教练或专家。</span><span class="gen">Instructor review: you authorize us to share the anonymized video and data reports only with certified coaches or experts designated for your training evaluation.</span></li>
+        <li><span class="gzh">保存与删除：分享的视频会保留用于持续改进动作追踪算法。你可以随时联系我们要求删除你分享的视频，我们将在收到请求后合理时间内删除。</span><span class="gen">Retention and deletion: shared videos are retained to keep improving the motion-tracking algorithms. You may contact us at any time to request deletion of a video you shared, and we will delete it within a reasonable time.</span></li>
+      </ul>
+      <h3><span class="gzh">3. 未成年人</span><span class="gen">3. Minors</span></h3>
+      <p><span class="gzh">FormBuddy 的使用者包括未满 18 岁的学员。未成年人使用本应用，须先取得家长或监护人的同意；分享训练视频前，同样须由家长或监护人确认。家长或监护人可以随时联系我们，要求删除其子女分享的视频。</span><span class="gen">FormBuddy is used by athletes under 18. Minors may use the app only with a parent or guardian's consent, and sharing a training video likewise requires a parent or guardian's confirmation. A parent or guardian may contact us at any time to request deletion of their child's shared video.</span></p>
+      <h3><span class="gzh">4. 数据安全</span><span class="gen">4. Data security</span></h3>
+      <p><span class="gzh">本机数据的安全由设备与浏览器保障；分享的视频在传输与存储过程中加密存放，仅限授权人员访问。我们不会出售你的数据。</span><span class="gen">On-device data is protected by your device and browser; shared videos are encrypted in transit and at rest and accessible only to authorized personnel. We never sell your data.</span></p>
+      <h3><span class="gzh">5. 责任限制</span><span class="gen">5. Limitation of liability</span></h3>
+      <p><span class="gzh">FormBuddy 是辅助运动训练与动作优化的自动分析工具。生成的报告不构成医疗建议、物理治疗或官方安全认证；自行录制练习或独立训练中发生的身体伤害，FormBuddy 及其开发者不承担责任。请在安全环境下练习，量力而行。</span><span class="gen">FormBuddy is an automated analysis tool to assist athletic training and movement optimization. Its reports do not constitute medical advice, physical therapy, or official safety certification. FormBuddy and its developers are not liable for physical injuries sustained during self-recorded practice or independent training. Please train in a safe environment and within your limits.</span></p>
+      <h3><span class="gzh">6. 政策更新</span><span class="gen">6. Changes to this policy</span></h3>
+      <p><span class="gzh">本政策更新时版本号会随之提高，应用将在你下次打开时重新弹出，请你重新阅读并确认。</span><span class="gen">When this policy is updated, its version number increases and the app will show it again on your next launch for you to review and accept.</span></p>
+      <h3><span class="gzh">7. 联系我们</span><span class="gen">7. Contact us</span></h3>
+      <p><span class="gzh">对本政策或你的数据有任何疑问、删除请求，请联系 FormBuddy（AxisMotion）：隐私联系邮箱待补充。</span><span class="gen">For any questions about this policy or your data, or to request deletion, contact FormBuddy (AxisMotion): privacy contact email to be added.</span></p>
+    </div>
+    <div class="report-actions" id="privacyConsentRow"><button id="privacyAcceptBtn" onclick="acceptPrivacy()">✓ 我已阅读并同意 / I agree</button><button id="privacyLaterBtn" onclick="closePrivacy()" style="background:none; border:none; color:#888; text-decoration:underline; font-size:0.85rem;">以后再说 / Not now</button></div>
+    <div class="report-actions" id="privacyViewRow" style="display:none;"><button class="privacyCloseBtn" id="privacyCloseBtn" onclick="closePrivacy()">✕ 关闭 / Close</button></div>
+  </div>
+</div>
 <div id="directOverlay">
   <span class="rec-dot" id="directRecDot" style="display:none;"></span>
   <span id="directOverlayText"></span>
@@ -852,6 +887,10 @@
       guideClose: "✕ 关闭",
       btnInstall: "📲 安装到主屏幕",
       installHide: "不再提示",
+      btnPrivacy: "🔒 隐私政策",
+      privacyAccept: "✓ 我已阅读并同意",
+      privacyLater: "以后再说",
+      privacyClose: "✕ 关闭",
       reportTitle: "📄 训练报告",
       reportTitleEn: "Training Report",
       reportStudent: "学员姓名",
@@ -1017,6 +1056,10 @@
       guideClose: "✕ Close",
       btnInstall: "📲 Install App",
       installHide: "Don't show again",
+      btnPrivacy: "🔒 Privacy",
+      privacyAccept: "✓ I have read and agree",
+      privacyLater: "Not now",
+      privacyClose: "✕ Close",
       reportTitle: "📄 Training Report",
       reportTitleEn: "训练报告",
       reportStudent: "Student name",
@@ -1424,6 +1467,7 @@
     renderCustomTplUi();
     loadSessions();
     updateInstallBtn(); // install button: only when installable (prompt event or iOS)
+    maybeShowPrivacyConsent(); // first open per device asks for privacy consent
   });
 
   function redrawCurrentFrame() {
@@ -2732,6 +2776,8 @@
     syncInstallBtnLabel(); // install button label follows the new language
     syncGuideLang(); // guide body + close buttons follow the new language
     syncInstallLang(); // install sheet follows the new language, like the guide
+    syncPrivacyBtnLabel(); // header privacy button follows the new language
+    syncPrivacyLang(); // privacy sheet follows the new language, like the guide
     document.getElementById('holdLabel').innerText = t.holdLabel;
     document.getElementById('titleSessions').innerText = t.titleSessions;
     document.getElementById('titleTemplates').innerText = t.titleTemplates;
@@ -3220,7 +3266,8 @@
     const guideOpen = document.getElementById('guideOverlay').style.display === 'block';
     const reportOpen = document.getElementById('reportOverlay').style.display === 'block';
     const installOpen = document.getElementById('installOverlay').style.display === 'block';
-    if (guideOpen || reportOpen || installOpen) return; // another overlay still needs the lock
+    const privacyOpen = document.getElementById('privacyOverlay').style.display === 'block';
+    if (guideOpen || reportOpen || installOpen || privacyOpen) return; // another overlay still needs the lock
     document.body.classList.remove('modal-open');
     document.body.style.top = '';
     window.scrollTo(0, modalScrollY);
@@ -3326,6 +3373,55 @@
     try { localStorage.removeItem(INSTALL_DISMISSED_KEY); } catch (e) {}
     updateInstallBtn();
   });
+
+  // ---- Privacy policy consent (2026-11-19) ----
+  // First open on each device shows the policy and asks for acceptance;
+  // the consent is versioned, so a future policy update re-prompts on the
+  // next launch. "Not now" (or the ✕) just closes it — nothing is stored,
+  // so it asks again next launch. The header Privacy button reopens the
+  // same sheet in view-only mode once consent is stored (close button only).
+  const PRIVACY_VERSION = 'v1.0';
+  const PRIVACY_CONSENT_KEY = 'formbuddy_privacy_consent_v1';
+  function privacyConsented() {
+    try {
+      const o = JSON.parse(localStorage.getItem(PRIVACY_CONSENT_KEY) || 'null');
+      return !!(o && o.v === PRIVACY_VERSION);
+    } catch (e) { return false; }
+  }
+  function syncPrivacyBtnLabel() {
+    const btn = document.getElementById('privacyBtn');
+    if (btn) btn.innerText = i18n[currentLang].btnPrivacy;
+  }
+  function syncPrivacyLang() {
+    const ov = document.getElementById('privacyOverlay');
+    if (!ov) return;
+    ov.classList.toggle('lang-en', currentLang === 'en');
+    ov.classList.toggle('lang-zh', currentLang === 'zh');
+    const t = i18n[currentLang];
+    const acc = document.getElementById('privacyAcceptBtn');
+    if (acc) acc.innerText = t.privacyAccept;
+    const later = document.getElementById('privacyLaterBtn');
+    if (later) later.innerText = t.privacyLater;
+    document.querySelectorAll('.privacyCloseBtn').forEach(b => { b.innerText = t.privacyClose; });
+  }
+  function openPrivacy(viewOnly) {
+    syncPrivacyLang();
+    document.getElementById('privacyConsentRow').style.display = viewOnly ? 'none' : '';
+    document.getElementById('privacyViewRow').style.display = viewOnly ? '' : 'none';
+    document.getElementById('privacyOverlay').style.display = 'block';
+    lockBodyScroll();
+  }
+  function closePrivacy() {
+    document.getElementById('privacyOverlay').style.display = 'none';
+    unlockBodyScroll();
+  }
+  function acceptPrivacy() {
+    try { localStorage.setItem(PRIVACY_CONSENT_KEY, JSON.stringify({ v: PRIVACY_VERSION, date: new Date().toISOString().slice(0, 10) })); } catch (e) {}
+    closePrivacy();
+  }
+  function maybeShowPrivacyConsent() {
+    if (!privacyConsented()) openPrivacy(false);
+  }
 
   function saveReportStudentName() {
     if (!reportCache) return;
